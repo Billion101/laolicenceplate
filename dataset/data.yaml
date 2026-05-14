@@ -1,0 +1,19 @@
+# 1. กำหนด Root Path ให้ชี้มาที่โฟลเดอร์ Dataset โดยตรง
+path: C:/Users/ASUS/Desktop/laolicenceplate/dataset
+
+# 2. ระบุโฟลเดอร์ย่อย (เริ่มนับจากข้างใน Dataset)
+train: train/images
+val: valid/images
+test: test/images
+
+# 3. ข้อมูล Class (คงเดิมไว้)
+nc: 5
+names: ['plate-blue', 'plate-darkBlue-white-font', 'plate-white', 'plate-white-blue-font', 'plate-yellow']
+
+# ส่วนของ roboflow ปล่อยไว้เหมือนเดิมได้ครับ
+roboflow:
+  workspace: test-mln3u
+  project: license-plate-mar58
+  version: 1
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/test-mln3u/license-plate-mar58/dataset/1

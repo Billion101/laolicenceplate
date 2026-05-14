@@ -1,0 +1,7 @@
+.venv/
+pycache/
+*.pt
+runs/
+dataset/train/
+dataset/valid/
+dataset/test/

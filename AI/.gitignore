@@ -1,7 +1,14 @@
 .venv/
 pycache/
 *.pt
+datasets/plate-text/
+datasets/vehicle-plate/
+datasets/vehicle/
+test_image/
+models/
+
+# Training runs / outputs / logs
 runs/
-dataset/train/
-dataset/valid/
-dataset/test/
+**/runs/
+**/weights/
+**/train_run/

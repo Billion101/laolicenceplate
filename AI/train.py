@@ -1,25 +1,40 @@
+import os
 from pathlib import Path
-import torch
 from ultralytics import YOLO
-
-BASE_DIR = Path(__file__).parent
+import config
 
 def main():
-    # 1. Load the base model (yolov8n.pt is recommended — lightweight and suitable for RTX 3050 Ti)
-    model = YOLO(str(BASE_DIR / 'models' / 'yolov8n.pt'))
+    # ==========================================================================
+    # 1. MODEL & DATASET CONFIGURATION
+    # ==========================================================================
+    # Target model selection (Switch keys between "plate" and "text" as needed)
+    model_type = "text"  # Options: "plate", "vehicle", "text"
+    
+    # Initialize the YOLO model with pre-defined weights from config
+    model_weights = config.DEFAULT_WEIGHTS[model_type]
+    model = YOLO(model_weights) 
 
-    # 2. Detect available device (GPU preferred, fallback to CPU)
-    device = 0 if torch.cuda.is_available() else 'cpu'
-    print(f'Using device: {"GPU (CUDA)" if device == 0 else "CPU"}')
+    # Construct the absolute path to the dataset configuration file (data.yaml)
+    dataset_dir = config.DATASETS[model_type]
+    data_yaml_path = os.path.join(dataset_dir, "data.yaml")
 
-    # 3. Start training
+    print(f"[str] Initializing YOLO training pipeline for: [{model_type.upper()}]")
+    print(f"[str] Using weights: {model_weights}")
+    print(f"[str] Using dataset configuration: {data_yaml_path}\n")
+
+    # ==========================================================================
+    # 2. MODEL TRAINING PIPELINE
+    # ==========================================================================
+    # Start the training process using hyperparameters managed in config.py
     model.train(
-        data=str(BASE_DIR / 'dataset' / 'data.yaml'),  # path to the dataset YAML file
-        epochs=100,          # number of training epochs (50–100 recommended to start)
-        imgsz=640,           # input image size
-        batch=16,            # batch size (16 or 32 recommended for RTX 3050 Ti)
-        device=0,       # use GPU if available, otherwise CPU
-        workers=2,            # number of CPU threads for data loading
+        data=data_yaml_path,
+        epochs=config.TRAIN_CONFIG["epochs"],
+        imgsz=config.TRAIN_CONFIG["imgsz"],
+        batch=config.TRAIN_CONFIG["batch"],
+        device=config.TRAIN_CONFIG["device"],
+        workers=config.TRAIN_CONFIG["workers"],
+        project=config.MODELS[model_type],  # Target directory (e.g., models/text/)
+        name="train_run"                    # Subfolder name for this training session
     )
 
 if __name__ == '__main__':

@@ -1,7 +1,24 @@
+# IDEs and Editors
+.vscode/
+.idea/
+
+# Python Virtual Environments (isolated to each subfolder or root)
 .venv/
-pycache/
+venv/
+env/
+ENV/
+
+# Python Compiled Caches
+**/__pycache__/
+*.pyc
+
+# PyTorch Model Weight Files
 *.pt
-runs/
-dataset/train/
-dataset/valid/
-dataset/test/
+
+# Local Runtime Output Logs & YOLO/OCR Results
+**/runs/
+
+# Machine Learning Datasets
+**/dataset/train/
+**/dataset/valid/
+**/dataset/test/

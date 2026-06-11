@@ -1,0 +1,228 @@
+import cv2
+import numpy as np
+from . import config
+
+def boxes_to_dicts(boxes, names):
+    """Convert ultralytics Boxes to a list of plain dicts."""
+    result = []
+    for box in boxes:
+        xyxy = box.xyxy[0].cpu().numpy()
+        xmin, ymin, xmax, ymax = map(float, xyxy)
+        result.append({
+            'xmin': xmin, 'ymin': ymin, 'xmax': xmax, 'ymax': ymax,
+            'y_center': (ymin + ymax) / 2.0,
+            'class': names[int(box.cls[0])],
+            'conf': float(box.conf[0]),
+        })
+    return result
+
+
+def nms_by_overlap(boxes, iou_thresh=0.6, iom_thresh=0.8):
+    """Remove duplicate boxes using IoU / IoM thresholds (confidence-first)."""
+    boxes = sorted(boxes, key=lambda b: b['conf'], reverse=True)
+    kept = []
+    for box in boxes:
+        bw = box['xmax'] - box['xmin']
+        bh = box['ymax'] - box['ymin']
+        box_area = bw * bh
+        duplicate = False
+        for k in kept:
+            xi1 = max(box['xmin'], k['xmin']); yi1 = max(box['ymin'], k['ymin'])
+            xi2 = min(box['xmax'], k['xmax']); yi2 = min(box['ymax'], k['ymax'])
+            inter = max(0.0, xi2 - xi1) * max(0.0, yi2 - yi1)
+            k_area = (k['xmax'] - k['xmin']) * (k['ymax'] - k['ymin'])
+            union = box_area + k_area - inter
+            if (inter / union > iou_thresh if union > 0 else False) or \
+               (inter / min(box_area, k_area) > iom_thresh if min(box_area, k_area) > 0 else False):
+                duplicate = True
+                break
+        if not duplicate:
+            kept.append(box)
+    return kept
+
+
+def group_into_lines(boxes, overlap_ratio_thresh=0.4):
+    """Group boxes into text lines based on vertical overlap."""
+    lines = []
+    for box in sorted(boxes, key=lambda b: b['xmin']):
+        placed = False
+        for line in lines:
+            ref = line[0]
+            overlap = min(box['ymax'], ref['ymax']) - max(box['ymin'], ref['ymin'])
+            min_h = min(box['ymax'] - box['ymin'], ref['ymax'] - ref['ymin'])
+            if min_h > 0 and overlap / min_h > overlap_ratio_thresh:
+                line.append(box)
+                placed = True
+                break
+        if not placed:
+            lines.append([box])
+    lines.sort(key=lambda line: sum(b['y_center'] for b in line) / len(line))
+    return lines
+
+
+def correct_context(line):
+    """Replace letters in digit positions and vice-versa based on index layout."""
+    n = len(line)
+    for idx, box in enumerate(line):
+        cls = box['class']
+        if cls in config.LAO_PROVINCE_MAP:
+            continue
+        in_digit_zone = (n - idx) <= 4
+        if in_digit_zone and not cls.isdigit() and cls in config.LETTER_TO_DIGIT:
+            box['class'] = config.LETTER_TO_DIGIT[cls]
+        elif not in_digit_zone and cls.isdigit() and cls in config.DIGIT_TO_LETTER:
+            box['class'] = config.DIGIT_TO_LETTER[cls]
+    return line
+
+
+def fix_lookalike_pair(letters):
+    """If two letters are lookalikes, pick the higher-confidence one for both."""
+    if len(letters) != 2:
+        return letters
+    c1, c2 = letters[0]['class'], letters[1]['class']
+    if c1 == c2:
+        return letters
+    for group in config.LOOKALIKE_GROUPS:
+        if {c1, c2} == group:
+            winner = c1 if letters[0]['conf'] >= letters[1]['conf'] else c2
+            letters[0]['class'] = letters[1]['class'] = winner
+            break
+    return letters
+
+
+def _placeholder(ref, xmin, xmax):
+    return {'xmin': xmin, 'ymin': ref['ymin'], 'xmax': xmax, 'ymax': ref['ymax'],
+            'y_center': ref['y_center'], 'class': '?', 'conf': 0.0}
+
+
+def fill_digit_gaps(letters, digits):
+    """Insert '?' placeholders for missing digits to achieve a 4-digit layout."""
+    if not digits:
+        return letters, digits
+
+    digits.sort(key=lambda b: b['xmin'])
+    avg_w = sum(b['xmax'] - b['xmin'] for b in digits) / len(digits)
+
+    # Missing letter prefix
+    if len(letters) == 1:
+        dist = (digits[0]['xmin'] + digits[0]['xmax']) / 2 - \
+               (letters[0]['xmin'] + letters[0]['xmax']) / 2
+        if dist > 2.0 * avg_w:
+            letters.append(_placeholder(letters[0],
+                                         letters[0]['xmax'] + 5,
+                                         letters[0]['xmax'] + avg_w + 5))
+
+    # Internal gaps
+    filled = []
+    for i, d in enumerate(digits):
+        filled.append(d)
+        if i < len(digits) - 1:
+            dist = (digits[i + 1]['xmin'] + digits[i + 1]['xmax']) / 2 - \
+                   (d['xmin'] + d['xmax']) / 2
+            n_missing = int(round(dist / avg_w)) - 1
+            if dist > 1.7 * avg_w:
+                for s in range(n_missing):
+                    filled.append(_placeholder(d,
+                                               d['xmax'] + s * avg_w + 5,
+                                               d['xmax'] + (s + 1) * avg_w + 5))
+
+    # Boundary gaps to ensure 4 digits
+    needed = 4 - len(filled)
+    if needed > 0:
+        if letters:
+            last_letter = max(letters, key=lambda b: b['xmax'])
+            gap_before = filled[0]['xmin'] - last_letter['xmax']
+            ref = filled[0]
+            if gap_before > 1.5 * avg_w:
+                for s in range(needed):
+                    filled.insert(0, _placeholder(ref,
+                                                   last_letter['xmax'] + s * avg_w + 5,
+                                                   last_letter['xmax'] + (s + 1) * avg_w + 5))
+            else:
+                for s in range(needed):
+                    filled.append(_placeholder(filled[-1],
+                                               filled[-1]['xmax'] + s * avg_w + 5,
+                                               filled[-1]['xmax'] + (s + 1) * avg_w + 5))
+        else:
+            for s in range(needed):
+                filled.append(_placeholder(filled[-1],
+                                           filled[-1]['xmax'] + s * avg_w + 5,
+                                           filled[-1]['xmax'] + (s + 1) * avg_w + 5))
+
+    return letters, filled
+
+
+def reconstruct_plate_text(text_boxes, names):
+    """Reconstruct plate text string representations in English and Lao script."""
+    if not text_boxes:
+        return "", "", []
+
+    boxes = nms_by_overlap(boxes_to_dicts(text_boxes, names))
+    lines = group_into_lines(boxes)
+
+    # Ensure at least one province line exists
+    has_province = any(b['class'] in config.LAO_PROVINCE_MAP for line in lines for b in line)
+    if not has_province:
+        lines.insert(0, [{'xmin': 0, 'ymin': 0, 'xmax': 0, 'ymax': -10,
+                          'y_center': -5, 'class': 'VTE', 'conf': 0.0, 'is_guessed': True}])
+
+    en_parts, lao_parts, all_chars = [], [], []
+
+    for line in lines:
+        line.sort(key=lambda b: b['xmin'])
+        line = correct_context(line)
+
+        letters = [b for b in line if not b['class'].isdigit() and b['class'] not in config.LAO_PROVINCE_MAP]
+        digits  = [b for b in line if b['class'].isdigit() or b['class'] == '?']
+
+        letters = fix_lookalike_pair(letters)
+        letters, digits = fill_digit_gaps(letters, digits)
+
+        province = [b for b in line if b['class'] in config.LAO_PROVINCE_MAP]
+        assembled = sorted(province + letters + digits, key=lambda b: b['xmin'])
+
+        en_words, lao_words = [], []
+        for box in assembled:
+            cls = box['class']
+            en_words.append(cls)
+            if cls in config.LAO_LETTER_MAP:
+                lao_words.append(config.LAO_LETTER_MAP[cls])
+            elif cls in config.LAO_PROVINCE_MAP:
+                suffix = " (Guessed)" if box.get('is_guessed') else ""
+                lao_words.append(config.LAO_PROVINCE_MAP[cls] + suffix)
+            else:
+                lao_words.append(cls)
+
+        en_parts.append(" ".join(en_words))
+        lao_parts.append(" ".join(lao_words))
+        all_chars.extend(assembled)
+
+    return " | ".join(en_parts), " | ".join(lao_parts), all_chars
+
+
+def rotate_image(img, angle):
+    """Rotate image by a given angle, expanding size to fit rotated bounds."""
+    (h, w) = img.shape[:2]
+    M = cv2.getRotationMatrix2D((w // 2, h // 2), angle, 1.0)
+    cos, sin = abs(M[0, 0]), abs(M[0, 1])
+    nW = int(h * sin + w * cos)
+    nH = int(h * cos + w * sin)
+    M[0, 2] += nW / 2 - w // 2
+    M[1, 2] += nH / 2 - h // 2
+    return cv2.warpAffine(img, M, (nW, nH), borderMode=cv2.BORDER_REPLICATE)
+
+
+def find_best_rotation_and_ocr(plate_img, text_model):
+    """Try multiple rotations and return the one producing the highest OCR confidence score."""
+    best_score, best_angle, best_results, best_img = -1.0, 0, None, plate_img
+
+    for angle in config.ROTATE_ANGLES:
+        rotated = plate_img if angle == 0 else rotate_image(plate_img, angle)
+        results = text_model(rotated, conf=config.OCR_CONF, iou=config.OCR_IOU,
+                             agnostic_nms=True, verbose=False)
+        boxes = results[0].boxes
+        score = len(boxes) * 10.0 + sum(float(b.conf[0]) for b in boxes)
+        if score > best_score:
+            best_score, best_angle, best_results, best_img = score, angle, results, rotated
+
+    return best_img, best_results

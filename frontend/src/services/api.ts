@@ -1,0 +1,100 @@
+export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
+export const WS_URL = import.meta.env.VITE_WS_URL || "ws://localhost:8000";
+
+export interface Detection {
+  plate_index: number;
+  box: [number, number, number, number];
+  confidence: number;
+  style: string;
+  ocr_en: string;
+  ocr_lao: string;
+  bg_color: string;
+  font_color: string;
+  plate_type: string;
+  image_url?: string;
+}
+
+export interface ScanImageResponse {
+  success: boolean;
+  detections_count: number;
+  detections: Detection[];
+  annotated_image: string;
+  error?: string;
+}
+
+export interface LogRecord {
+  _id: string;
+  ocr_lao: string;
+  plate_type: string;
+  image_url: string;
+  timestamp?: number;
+}
+
+export const api = {
+  /**
+   * Scan a single image file
+   */
+  async scanImage(file: File): Promise<ScanImageResponse> {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch(`${BACKEND_URL}/api/v1/scan/image`, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(`API scanning failed with status: ${response.status}`);
+    }
+
+    return response.json();
+  },
+
+  /**
+   * Get scanned plate logs from MongoDB database
+   */
+  async getLogs(limit: number = 50): Promise<LogRecord[]> {
+    const response = await fetch(`${BACKEND_URL}/api/v1/scan/logs?limit=${limit}`);
+    
+    if (!response.ok) {
+      throw new Error("Failed to fetch logs from server");
+    }
+
+    return response.json();
+  },
+
+  /**
+   * Upload video file for processing
+   */
+  async uploadVideo(file: File): Promise<{ success: boolean; filename?: string; error?: string }> {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch(`${BACKEND_URL}/api/v1/scan/video/upload`, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Video upload failed with status: ${response.status}`);
+    }
+
+    return response.json();
+  },
+
+  /**
+   * Get WebSocket URL for real-time webcam frames scanning
+   */
+  getWebSocketUrl(): string {
+    // Replace http with ws protocol
+    const baseWs = WS_URL.replace(/^http/, "ws");
+    return `${baseWs}/api/v1/scan/ws`;
+  },
+
+  /**
+   * Get video streaming scan endpoint URL
+   */
+  getVideoStreamUrl(filename: string): string {
+    return `${BACKEND_URL}/api/v1/scan/video/stream?filename=${encodeURIComponent(filename)}`;
+  }
+};

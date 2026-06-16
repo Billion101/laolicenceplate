@@ -93,7 +93,8 @@ class LicensePlatePipeline:
                 'bg_color': bg_color,
                 'font_color': font_color,
                 'plate_type': plate_type,
-                'is_fallback': crop_info['is_fallback']
+                'is_fallback': crop_info['is_fallback'],
+                'crop': rotated
             })
 
             # Draw visual overlay on image

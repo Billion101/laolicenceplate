@@ -137,3 +137,45 @@ npm run dev
 ```
 
 The frontend application will boot by default on `http://localhost:5173`. Open this URL in your web browser to interact with the application.
+
+---
+
+## 5. GPU Acceleration Setup (Windows)
+
+If you have a dedicated graphics card (like an NVIDIA RTX series card), you can run the ONNX models on the GPU instead of the CPU. This speeds up plate detection and OCR significantly.
+
+### Option A: DirectML (Easiest - Works instantly on RTX, AMD, or Intel GPUs)
+DirectML runs on any DirectX 12 compatible card. It does **not** require installing any CUDA Toolkit or SDKs.
+
+To set up DirectML:
+1. Open PowerShell and navigate to the directory (`AI` or `backend`).
+2. Activate the virtual environment:
+   ```powershell
+   .\.venv\Scripts\Activate.ps1
+   ```
+3. Swap the CPU onnxruntime package for DirectML:
+   ```powershell
+   pip uninstall onnxruntime -y
+   pip install onnxruntime-directml
+   ```
+4. Run the application. It will automatically detect your GPU and print:
+   ```text
+   Using ONNX Runtime with DmlExecutionProvider
+   ```
+
+### Option B: CUDA (Fastest - NVIDIA GPUs only)
+This provides the maximum performance but requires installing the **NVIDIA CUDA Toolkit** (v11.x or v12.x) and **cuDNN** libraries on your Windows operating system.
+
+To set up CUDA:
+1. Activate the virtual environment (`.\.venv\Scripts\Activate.ps1`).
+2. Swap the CPU package for GPU:
+   ```powershell
+   pip uninstall onnxruntime -y
+   pip install onnxruntime-gpu
+   ```
+3. Verify that the GPU provider is recognized:
+   ```powershell
+   python -c "import onnxruntime as ort; print(ort.get_available_providers())"
+   # Output should list: 'CUDAExecutionProvider'
+   ```
+

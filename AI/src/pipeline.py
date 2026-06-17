@@ -15,8 +15,8 @@ class LicensePlatePipeline:
         self.text_model_path = text_model_path or config.TEXT_MODEL_PATH
         
         # Load YOLO models
-        self.plate_model = YOLO(self.plate_model_path)
-        self.text_model  = YOLO(self.text_model_path)
+        self.plate_model = YOLO(self.plate_model_path, task='detect')
+        self.text_model  = YOLO(self.text_model_path, task='detect')
         
     def process_image(self, img):
         """

@@ -12,8 +12,9 @@ ENV/
 **/__pycache__/
 *.pyc
 
-# PyTorch Model Weight Files
+# Model Weight Files
 *.pt
+*.onnx
 
 # Local Runtime Output Logs & YOLO/OCR Results
 **/runs/
@@ -22,3 +23,8 @@ ENV/
 **/dataset/train/
 **/dataset/valid/
 **/dataset/test/
+
+# Backend temporary and uploaded media
+backend/temp/
+backend/static/plates/*
+!backend/static/plates/.gitkeep

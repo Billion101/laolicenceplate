@@ -7,8 +7,8 @@ SRC_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SRC_DIR)
 
 # Path to YOLO models inside Re-Clean/models/
-PLATE_MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "vehicle_plate.pt")
-TEXT_MODEL_PATH  = os.path.join(PROJECT_ROOT, "models", "plate_text.pt")
+PLATE_MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "vehicle_plate.onnx")
+TEXT_MODEL_PATH  = os.path.join(PROJECT_ROOT, "models", "plate_text.onnx")
 
 # Default test and output directories
 TEST_IMAGE_DIR = os.path.join(PROJECT_ROOT, "test_images")

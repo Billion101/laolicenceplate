@@ -1,5 +1,7 @@
 import cv2
 import numpy as np
+import ultralytics.utils.checks
+ultralytics.utils.checks.AUTOINSTALL = False
 from ultralytics import YOLO
 from . import config
 from . import ocr_utils

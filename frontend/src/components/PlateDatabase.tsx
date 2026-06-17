@@ -152,28 +152,60 @@ export const PlateDatabase: React.FC = () => {
                 className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-all duration-200 flex flex-col flex-1"
               >
                 {/* Crop Image Box */}
-                <div className="h-44 bg-slate-100 flex items-center justify-center relative overflow-hidden border-b border-slate-100 p-4">
-                  {log.image_url ? (
-                    <img
-                      src={`${BACKEND_URL}${log.image_url}`}
-                      alt={`Crop of ${log.ocr_lao}`}
-                      className="max-h-full max-w-full object-contain rounded-lg shadow-sm border border-slate-200 bg-white"
-                      onError={(e) => {
-                        // fallback if image fails to load (e.g. backend was restarted and temp files removed)
-                        (e.target as HTMLImageElement).src = "";
-                        (e.target as HTMLImageElement).className = "hidden";
-                        const parent = (e.target as HTMLElement).parentElement;
-                        if (parent) {
-                          const fallbackSpan = document.createElement("span");
-                          fallbackSpan.className = "text-xs text-slate-400 text-center font-medium px-4";
-                          fallbackSpan.innerText = "Plate Image Unreachable";
-                          parent.appendChild(fallbackSpan);
-                        }
-                      }}
-                    />
-                  ) : (
-                    <span className="text-xs text-slate-400 font-medium">No Image Saved</span>
-                  )}
+                <div className="h-44 bg-slate-100 flex gap-4 items-center justify-center relative overflow-hidden border-b border-slate-100 p-4">
+                  {/* Vehicle Crop */}
+                  <div className="flex-1 h-full flex flex-col items-center justify-center">
+                    <span className="text-[9px] text-slate-400 font-bold uppercase mb-1 shrink-0">Vehicle</span>
+                    <div className="flex-1 w-full bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden flex items-center justify-center relative">
+                      {log.vehicle_image_url ? (
+                        <img
+                          src={`${BACKEND_URL}${log.vehicle_image_url}`}
+                          alt={`Vehicle crop of ${log.ocr_lao}`}
+                          className="max-h-full max-w-full object-contain"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = "";
+                            (e.target as HTMLImageElement).className = "hidden";
+                            const parent = (e.target as HTMLElement).parentElement;
+                            if (parent && !parent.querySelector(".fallback-text")) {
+                              const fallbackSpan = document.createElement("span");
+                              fallbackSpan.className = "fallback-text text-[9px] text-slate-400 text-center font-medium px-2";
+                              fallbackSpan.innerText = "Unreachable";
+                              parent.appendChild(fallbackSpan);
+                            }
+                          }}
+                        />
+                      ) : (
+                        <span className="text-[10px] text-slate-400 font-medium">No Image</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Plate Crop */}
+                  <div className="flex-1 h-full flex flex-col items-center justify-center">
+                    <span className="text-[9px] text-slate-400 font-bold uppercase mb-1 shrink-0">Plate</span>
+                    <div className="flex-1 w-full bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden flex items-center justify-center relative p-1">
+                      {log.image_url ? (
+                        <img
+                          src={`${BACKEND_URL}${log.image_url}`}
+                          alt={`Plate crop of ${log.ocr_lao}`}
+                          className="max-h-full max-w-full object-contain"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = "";
+                            (e.target as HTMLImageElement).className = "hidden";
+                            const parent = (e.target as HTMLElement).parentElement;
+                            if (parent && !parent.querySelector(".fallback-text")) {
+                              const fallbackSpan = document.createElement("span");
+                              fallbackSpan.className = "fallback-text text-[9px] text-slate-400 text-center font-medium px-2";
+                              fallbackSpan.innerText = "Unreachable";
+                              parent.appendChild(fallbackSpan);
+                            }
+                          }}
+                        />
+                      ) : (
+                        <span className="text-[10px] text-slate-400 font-medium">No Image</span>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Card Info */}

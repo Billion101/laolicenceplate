@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { api } from "../services/api";
+import { api, BACKEND_URL } from "../services/api";
 import type { Detection } from "../services/api";
 import { Upload, Image as ImageIcon, Loader2, AlertCircle, RefreshCw, CheckCircle } from "lucide-react";
 
@@ -182,6 +182,36 @@ export const ImageScanner: React.FC = () => {
                         <span>Font: <strong className="text-slate-600 font-semibold">{plate.font_color}</strong></span>
                       </div>
                     </div>
+
+                    {/* Crop Images Section */}
+                    {(plate.image_url || plate.vehicle_image_url) && (
+                      <div className="flex gap-3 w-full pt-2.5 border-t border-slate-100">
+                        {plate.vehicle_image_url && (
+                          <div className="flex-1 flex flex-col items-center">
+                            <span className="text-[9px] text-slate-400 font-bold uppercase mb-1">Vehicle Crop</span>
+                            <div className="h-16 w-full bg-slate-50 rounded-lg flex items-center justify-center overflow-hidden border border-slate-100">
+                              <img
+                                src={`${BACKEND_URL}${plate.vehicle_image_url}`}
+                                alt="Vehicle Crop"
+                                className="max-h-full max-w-full object-contain"
+                              />
+                            </div>
+                          </div>
+                        )}
+                        {plate.image_url && (
+                          <div className="flex-1 flex flex-col items-center">
+                            <span className="text-[9px] text-slate-400 font-bold uppercase mb-1">Plate Crop</span>
+                            <div className="h-16 w-full bg-slate-50 rounded-lg flex items-center justify-center overflow-hidden border border-slate-100">
+                              <img
+                                src={`${BACKEND_URL}${plate.image_url}`}
+                                alt="Plate Crop"
+                                className="max-h-full max-w-full object-contain"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))
               ) : (

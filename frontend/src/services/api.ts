@@ -11,6 +11,7 @@ export interface Detection {
   font_color: string;
   plate_type: string;
   image_url?: string;
+  vehicle_image_url?: string;
 }
 
 export interface ScanImageResponse {
@@ -31,6 +32,7 @@ export interface LogRecord {
   plate_type: string;
   confidence: number;
   image_url: string;
+  vehicle_image_url?: string;
 }
 
 export const api = {

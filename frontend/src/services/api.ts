@@ -1,5 +1,4 @@
 export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
-export const WS_URL = import.meta.env.VITE_WS_URL || "ws://localhost:8000";
 
 export interface Detection {
   plate_index: number;
@@ -24,10 +23,14 @@ export interface ScanImageResponse {
 
 export interface LogRecord {
   _id: string;
-  ocr_lao: string;
-  plate_type: string;
-  image_url: string;
   timestamp?: number;
+  ocr_en: string;
+  ocr_lao: string;
+  bg_color: string;
+  font_color: string;
+  plate_type: string;
+  confidence: number;
+  image_url: string;
 }
 
 export const api = {
@@ -82,14 +85,7 @@ export const api = {
     return response.json();
   },
 
-  /**
-   * Get WebSocket URL for real-time webcam frames scanning
-   */
-  getWebSocketUrl(): string {
-    // Replace http with ws protocol
-    const baseWs = WS_URL.replace(/^http/, "ws");
-    return `${baseWs}/api/v1/scan/ws`;
-  },
+
 
   /**
    * Get video streaming scan endpoint URL

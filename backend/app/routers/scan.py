@@ -181,54 +181,7 @@ async def stream_video(filename: str = Query(...)):
     return StreamingResponse(frame_generator(), media_type="multipart/x-mixed-replace; boundary=frame")
 
 
-@router.websocket("/ws")
-async def scan_websocket(websocket: WebSocket):
-    """
-    Accepts a real-time WebSocket connection. Receives binary image frame blobs,
-    runs the plate pipeline, logs metadata to DB, and returns results + annotated frame.
-    """
-    await websocket.accept()
-    pipeline = AIService.get_pipeline()
-    print("[WEBSOCKET] Client connected for real-time camera scanning.")
 
-    try:
-        while True:
-            # Receive image frame as binary bytes
-            data = await websocket.receive_bytes()
-            
-            nparr = np.frombuffer(data, np.uint8)
-            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            
-            if frame is None:
-                await websocket.send_json({"success": False, "error": "Invalid frame bytes"})
-                continue
-                
-            # Process frame
-            results, annotated_frame = pipeline.process_image(frame)
-            
-            # Log detections
-            for res in results:
-                await log_detection_to_db(res)
-                
-            # Encode annotated frame back to JPEG and Base64-encode it
-            _, encoded_img = cv2.imencode('.jpg', annotated_frame)
-            base64_frame = base64.b64encode(encoded_img).decode('utf-8')
-            
-            # Send payload back
-            await websocket.send_json({
-                "success": True,
-                "detections": results,
-                "annotated_frame": f"data:image/jpeg;base64,{base64_frame}"
-            })
-            
-    except WebSocketDisconnect:
-        print("[WEBSOCKET] Client disconnected.")
-    except Exception as e:
-        print(f"[WEBSOCKET ERROR] {e}")
-        try:
-            await websocket.send_json({"success": False, "error": str(e)})
-        except:
-            pass
 
 
 @router.get("/logs", summary="Fetch recent detection logs from MongoDB")
@@ -241,11 +194,16 @@ async def get_logs(limit: int = Query(50, ge=1, le=500)):
         return {"success": False, "error": "MongoDB is not connected", "logs": []}
 
     try:
-        # DB Projection returning only: _id, ocr_lao, plate_type, image_url
+        # DB Projection returning all details for frontend card rendering
         projection = {
             "_id": 1,
+            "timestamp": 1,
+            "ocr_en": 1,
             "ocr_lao": 1,
+            "bg_color": 1,
+            "font_color": 1,
             "plate_type": 1,
+            "confidence": 1,
             "image_url": 1
         }
         cursor = db[config.LOGS_COLLECTION].find({}, projection).sort("timestamp", -1).limit(limit)

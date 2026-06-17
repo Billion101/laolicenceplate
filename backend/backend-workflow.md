@@ -6,14 +6,13 @@ This document provides a comprehensive overview of the backend codebase, archite
 
 ## Architecture Overview
 
-The backend is a **FastAPI** Python application that integrates a custom **YOLOv8** computer vision pipeline, **MongoDB** for persistent detection logs, and real-time streaming interfaces (WebSockets and MJPEG video streaming).
+The backend is a **FastAPI** Python application that integrates a custom **YOLOv8** computer vision pipeline, **MongoDB** for persistent detection logs, and real-time video streaming (MJPEG).
 
 ```mermaid
 graph TD
     Client[Frontend Client] -->|HTTP POST Image| ImageAPI[scan.py: /image]
     Client -->|HTTP POST Video| VideoAPI[scan.py: /video/upload]
     Client -->|HTTP GET Stream| StreamAPI[scan.py: /video/stream]
-    Client -->|WS Connect| WebSocketAPI[scan.py: /ws]
     Client -->|HTTP GET Logs| LogsAPI[scan.py: /logs]
     
     subgraph FastAPI Backend App
@@ -21,7 +20,6 @@ graph TD
         VideoAPI --> TempStorage[(Local Temp Storage)]
         StreamAPI --> TempStorage
         StreamAPI --> AIService
-        WebSocketAPI --> AIService
         LogsAPI --> DB[db.py: get_database]
         AIService --> Pipeline[LicensePlatePipeline]
     end
@@ -37,7 +35,6 @@ graph TD
     subgraph Database & Assets
         ImageAPI --> MongoDB[(MongoDB Collection)]
         StreamAPI --> MongoDB
-        WebSocketAPI --> MongoDB
         ImageAPI --> StaticStorage[(Local Static Folder /plates/)]
     end
 ```
@@ -56,7 +53,7 @@ backend/
 │   ├── db.py                     # MongoDB async database connection manager
 │   ├── main.py                   # FastAPI main app lifecycle, CORS, & mounts
 │   ├── routers/
-│   │   └── scan.py               # Core API routes: Image, Video, WebSockets, & Logs
+│   │   └── scan.py               # Core API routes: Image, Video, & Logs
 │   └── services/
 │       └── ai_service.py         # Singleton wrapper to avoid re-instantiating YOLO
 ├── run.py                        # Uvicorn execution entrypoint
@@ -107,16 +104,7 @@ backend/
     5. Encodes annotated frames to JPEG, formats them as standard HTTP `multipart/x-mixed-replace` boundaries, and yields the stream chunks at a controlled framerate (~30 FPS).
     6. **Cleanup**: Automatically closes `cv2.VideoCapture` and deletes the temporary video file from disk once the client terminates the connection or the stream reaches its end.
 
-### 3. Real-Time Camera WebSocket: `WS /api/v1/scan/ws`
-- **Purpose**: Low-latency duplex stream for continuous canvas drawing (e.g., live webcam).
-- **Flow**:
-  1. Connection is upgraded to WebSocket protocol.
-  2. Client continuously streams raw binary image frames.
-  3. The server decodes frame bytes, processes them via the AI pipeline, logs detected plates to the database, and converts annotated frames to base64 JPEGs.
-  4. Sends a JSON packet back to the client containing detection arrays and the base64-encoded frame.
-  5. Gracefully handles client disconnects and internal exceptions without interrupting the FastAPI listener.
-
-### 4. History Logs Retrieval: `GET /api/v1/scan/logs`
+### 3. History Logs Retrieval: `GET /api/v1/scan/logs`
 - **Purpose**: Lists previously scanned plates.
 - **Query Parameter**: `limit` (Defaults to 50 records, capped at 500 max).
 - **Flow**:

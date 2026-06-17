@@ -28,3 +28,5 @@ ENV/
 backend/temp/
 backend/static/plates/*
 !backend/static/plates/.gitkeep
+backend/static/vehicles/*
+!backend/static/vehicles/.gitkeep

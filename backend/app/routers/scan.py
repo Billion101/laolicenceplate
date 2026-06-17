@@ -29,8 +29,10 @@ async def log_detection_to_db(detection: dict):
     """Save a plate detection log entry into MongoDB and save the crop image locally."""
     db = get_database()
     
-    # 1. Pop the numpy crop array immediately to clean the dictionary for JSON responses
+    # 1. Pop the numpy crop arrays immediately to clean the dictionary for JSON responses
     crop_img = detection.pop('crop', None)
+    vehicle_crop = detection.pop('vehicle_crop', None)
+    detection.pop('vehicle_box', None)
     
     # Generate a unique ObjectId
     doc_id = ObjectId()
@@ -52,10 +54,27 @@ async def log_detection_to_db(detection: dict):
         except Exception as file_err:
             print(f"[FILE ERROR] Failed to save crop image to {file_path}: {file_err}")
 
+    # Save the vehicle crop image locally if it exists and is a valid numpy array
+    vehicle_image_url = ""
+    if vehicle_crop is not None and isinstance(vehicle_crop, np.ndarray) and vehicle_crop.size > 0:
+        static_dir = os.path.join(config.BACKEND_DIR, "static")
+        vehicles_dir = os.path.join(static_dir, "vehicles")
+        os.makedirs(vehicles_dir, exist_ok=True)
+        
+        file_name = f"{str_id}.jpg"
+        file_path = os.path.join(vehicles_dir, file_name)
+        try:
+            cv2.imwrite(file_path, vehicle_crop)
+            # Use relative URL that can be accessed via backend's static route
+            vehicle_image_url = f"/static/vehicles/{file_name}"
+        except Exception as file_err:
+            print(f"[FILE ERROR] Failed to save vehicle crop image to {file_path}: {file_err}")
+
     if db is None:
         print("[DB WARNING] MongoDB not connected. Skipping log write.")
-        # Update the detection dictionary with image_url for inline JSON responses
+        # Update the detection dictionary with image_urls for inline JSON responses
         detection["image_url"] = image_url
+        detection["vehicle_image_url"] = vehicle_image_url
         return False
     
     try:
@@ -68,12 +87,14 @@ async def log_detection_to_db(detection: dict):
             "font_color": detection.get("font_color", ""),
             "plate_type": detection.get("plate_type", ""),
             "confidence": float(detection.get("confidence", 0.0)),
-            "image_url": image_url
+            "image_url": image_url,
+            "vehicle_image_url": vehicle_image_url
         }
         await db[config.LOGS_COLLECTION].insert_one(log_entry)
         
-        # Update the detection dictionary with dynamic image_url
+        # Update the detection dictionary with dynamic image_urls
         detection["image_url"] = image_url
+        detection["vehicle_image_url"] = vehicle_image_url
         return True
     except Exception as e:
         print(f"[DB ERROR] Failed to save detection log to MongoDB: {e}")
@@ -204,7 +225,8 @@ async def get_logs(limit: int = Query(50, ge=1, le=500)):
             "font_color": 1,
             "plate_type": 1,
             "confidence": 1,
-            "image_url": 1
+            "image_url": 1,
+            "vehicle_image_url": 1
         }
         cursor = db[config.LOGS_COLLECTION].find({}, projection).sort("timestamp", -1).limit(limit)
         logs = []

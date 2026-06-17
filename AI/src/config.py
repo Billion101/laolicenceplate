@@ -9,6 +9,7 @@ PROJECT_ROOT = os.path.dirname(SRC_DIR)
 # Path to YOLO models inside Re-Clean/models/
 PLATE_MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "vehicle_plate.onnx")
 TEXT_MODEL_PATH  = os.path.join(PROJECT_ROOT, "models", "plate_text.onnx")
+VEHICLE_MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "yolov8n.onnx")
 
 # Default test and output directories
 TEST_IMAGE_DIR = os.path.join(PROJECT_ROOT, "test_images")
@@ -20,6 +21,9 @@ OUTPUT_SAVE_DIR = os.path.join(PROJECT_ROOT, "runs", "color_ocr_results")
 PLATE_CONF_HIGH = 0.18
 PLATE_CONF_LOW  = 0.10
 PLATE_IOU       = 0.3
+
+VEHICLE_CONF    = 0.25
+VEHICLE_CLASSES = [2, 5, 7]  # COCO indexes: Car (2), Bus (5), Truck (7)
 
 OCR_CONF        = 0.25
 OCR_CONF_RETRY  = 0.20

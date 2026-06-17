@@ -30,3 +30,7 @@ backend/static/plates/*
 !backend/static/plates/.gitkeep
 backend/static/vehicles/*
 !backend/static/vehicles/.gitkeep
+
+# AI Test Images
+AI/test_images/*
+!AI/test_images/.gitkeep

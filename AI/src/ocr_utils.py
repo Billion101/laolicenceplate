@@ -222,6 +222,16 @@ def find_best_rotation_and_ocr(plate_img, text_model):
                              agnostic_nms=True, verbose=False)
         boxes = results[0].boxes
         score = len(boxes) * 10.0 + sum(float(b.conf[0]) for b in boxes)
+        
+        # Early-exit optimization: if 0 degrees yields a good detection, skip other angles
+        if angle == 0 and len(boxes) >= 6:
+            conf_vals = [float(b.conf[0]) for b in boxes]
+            avg_conf = sum(conf_vals) / len(conf_vals)
+            # If we have at least 6 characters with an average confidence of 82% or higher,
+            # it's a clean upright plate. Exit early to save processing time.
+            if avg_conf >= 0.82:
+                return rotated, results
+
         if score > best_score:
             best_score, best_angle, best_results, best_img = score, angle, results, rotated
 

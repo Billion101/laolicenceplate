@@ -100,42 +100,62 @@ def analyze_plate_colors(plate_img, text_boxes):
     bg_color = classify_hsv_color(bg_h, bg_s, bg_v)
 
     # --- 2. Font/Letter Color Extraction ---
+    # We use a hierarchical confidence threshold to filter out false or shifted character boxes
     font_color_candidates = []
     
-    for box in text_boxes:
-        # Handle both dictionary character lists and YOLO Box formats
-        if isinstance(box, dict):
-            xmin, ymin, xmax, ymax = int(box['xmin']), int(box['ymin']), int(box['xmax']), int(box['ymax'])
-        else:
-            xyxy = box.xyxy[0].cpu().numpy()
-            xmin, ymin, xmax, ymax = map(int, xyxy)
+    for thresh in [0.70, 0.40, 0.0]:
+        font_color_candidates = []
+        for box in text_boxes:
+            # Handle both dictionary character lists and YOLO Box formats
+            if isinstance(box, dict):
+                # Skip placeholders or zero-confidence dummy entries
+                if box.get('class') == '?' or box.get('conf', 1.0) == 0.0:
+                    continue
+                if box.get('conf', 1.0) < thresh:
+                    continue
+                xmin, ymin, xmax, ymax = int(box['xmin']), int(box['ymin']), int(box['xmax']), int(box['ymax'])
+            else:
+                if float(box.conf[0]) < thresh:
+                    continue
+                xyxy = box.xyxy[0].cpu().numpy()
+                xmin, ymin, xmax, ymax = map(int, xyxy)
+                
+            xmin, ymin = max(0, xmin), max(0, ymin)
+            xmax, ymax = min(width, xmax), min(height, ymax)
             
-        xmin, ymin = max(0, xmin), max(0, ymin)
-        xmax, ymax = min(width, xmax), min(height, ymax)
-        
-        char_hsv = hsv[ymin:ymax, xmin:xmax]
-        if char_hsv.size == 0:
-            continue
-        
-        char_pixels = char_hsv.reshape(-1, 3)
-        
-        # Segment character stroke pixels (foreground).
-        # We take the 10% darkest pixels (for light backgrounds) or 10% brightest pixels (for dark backgrounds)
-        if bg_color in ["White", "Yellow"]:
-            v_vals = char_pixels[:, 2]
-            thresh_idx = np.argsort(v_vals)[:max(1, len(v_vals) // 10)]
-            stroke_pixels = char_pixels[thresh_idx]
-        else:
-            v_vals = char_pixels[:, 2]
-            thresh_idx = np.argsort(v_vals)[-max(1, len(v_vals) // 10):]
-            stroke_pixels = char_pixels[thresh_idx]
+            char_hsv = hsv[ymin:ymax, xmin:xmax]
+            if char_hsv.size == 0:
+                continue
             
-        if len(stroke_pixels) > 0:
-            stroke_h = float(np.median(stroke_pixels[:, 0]))
-            stroke_s = float(np.median(stroke_pixels[:, 1]))
-            stroke_v = float(np.median(stroke_pixels[:, 2]))
-            char_color = classify_hsv_color(stroke_h, stroke_s, stroke_v)
-            font_color_candidates.append(char_color)
+            char_pixels = char_hsv.reshape(-1, 3)
+            
+            # Segment character stroke pixels (foreground).
+            # We take the 10% darkest pixels (for light backgrounds) or 10% brightest pixels (for dark backgrounds)
+            if bg_color in ["White", "Yellow"]:
+                v_vals = char_pixels[:, 2]
+                thresh_idx = np.argsort(v_vals)[:max(1, len(v_vals) // 10)]
+                stroke_pixels = char_pixels[thresh_idx]
+            else:
+                v_vals = char_pixels[:, 2]
+                thresh_idx = np.argsort(v_vals)[-max(1, len(v_vals) // 10):]
+                stroke_pixels = char_pixels[thresh_idx]
+                
+            if len(stroke_pixels) > 0:
+                stroke_h = float(np.median(stroke_pixels[:, 0]))
+                stroke_s = float(np.median(stroke_pixels[:, 1]))
+                stroke_v = float(np.median(stroke_pixels[:, 2]))
+                char_color = classify_hsv_color(stroke_h, stroke_s, stroke_v)
+                
+                # Skip candidates that match the background color (contrast requirement)
+                if char_color == bg_color:
+                    continue
+                    
+                if char_color != "Unknown":
+                    font_color_candidates.append(char_color)
+        
+        # If we found valid candidates at this threshold level, break and vote
+        if font_color_candidates:
+            break
 
     # Get dominant font color using majority vote
     if font_color_candidates:

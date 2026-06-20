@@ -31,7 +31,7 @@ OCR_IOU         = 0.60
 MIN_CHARS       = 4
 
 # Optimized list of rotation angles for tilt correction (deskewing)
-ROTATE_ANGLES   = [-10, -5, 0, 5, 10]
+ROTATE_ANGLES   = [0, -5, 5, -10, 10]
 VALID_EXTENSIONS = (".jpg", ".jpeg", ".png")
 
 # ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@ This document describes the inner workings, component architecture, and director
 
 ## 1. AI Component Architecture
 
-The AI module is built as a hierarchical processing pipeline that detects vehicles, locates their plates, corrects tilt, runs OCR, and extracts plate colors/types in a cascaded flow.
+The AI module is built as a hierarchical processing pipeline that detects vehicles, locates their plates, corrects tilt, runs OCR, and classifies plate types in a cascaded flow.
 
 ### Pipeline Workflow
 The pipeline in [pipeline.py](file:///c:/Users/billi/Desktop/laolicenceplate/AI/src/pipeline.py) operates as follows:
@@ -33,10 +33,10 @@ The pipeline in [pipeline.py](file:///c:/Users/billi/Desktop/laolicenceplate/AI/
 ┌─────────────────────────┐
 │ 4. Plate OCR (Text)     │ ➔ plate_text.onnx (detects char box coordinates & labels)
 └─────────┬───────────────┘
-          │ (Passes text boxes & plate crop)
+          │ (Passes deskewed crop)
           ▼
 ┌─────────────────────────┐
-│ 5. Color & Type Rules   │ ➔ HSV segmentation (determines plate classification)
+│ 5. AI Plate Classifier  │ ➔ plate_classifier.onnx (deep learning style classifier)
 └─────────┬───────────────┘
           │
           ▼
@@ -48,7 +48,7 @@ The pipeline in [pipeline.py](file:///c:/Users/billi/Desktop/laolicenceplate/AI/
 2.  **Plate Detector (Stage 2):** Runs `vehicle_plate.onnx` on the vehicle bounding box crop. This localized search is faster and more accurate than scanning the entire image.
 3.  **Deskewing & Tilt Correction (Stage 3):** To improve OCR accuracy on angled cameras, the plate crop is rotated across a sequence of candidate angles (`-10`, `-5`, `0`, `5`, `10` degrees). The angle producing the highest OCR confidence is selected.
 4.  **OCR Text Reader (Stage 4):** Uses `plate_text.onnx` to read the characters, map characters back to Lao letters using a dictionary, reconstruct digits/provinces, and automatically clean lookalikes (e.g. `O` ➔ `0` in numerical parts).
-5.  **Color & Type Classification (Stage 5):** Segments background and text stroke colors in HSV color space using median estimations to classify the plate's type (e.g. Private, Business, State, Public, Foreign).
+5.  **AI Plate Classifier (Stage 5):** Direct deep-learning image classification using `plate_classifier.onnx` (trained via YOLOv8-classify). Predicts the plate registry style directly (`private`, `state`, `business_100`, `business_1`, `public`, `foreign`) and maps them to human-readable plate names and colors.
 6.  **Duplicate Plate Suppression (NMS):** If a single plate causes multiple overlapping bounding boxes, a custom **Intersection over Union (IoU) Non-Maximum Suppression** filter suppresses boxes with IoU $> 0.4$, returning only the highest confidence plate.
 
 ---
@@ -63,12 +63,13 @@ laolicenceplate/AI/
 ├── models/                    # ONNX model files (ignored from git)
 │   ├── yolov8n.onnx           # Vehicle object detector
 │   ├── vehicle_plate.onnx     # License plate box detector
-│   └── plate_text.onnx        # Lao character and digit OCR model
+│   ├── plate_text.onnx        # Lao character and digit OCR model
+│   └── plate_classifier.onnx  # Deep learning license plate type classifier
 ├── runs/                      # Local testing output folder (ignored from git)
 │   └── color_ocr_results/     # Output images with bounding boxes & texts
 ├── src/                       # Core python source scripts
 │   ├── __init__.py            # Python package initializer
-│   ├── color_utils.py         # HSV color segmenter & Lao plate type mapping
+│   ├── color_utils.py         # [DEPRECATED] Former HSV color segmenter
 │   ├── config.py              # Hyperparameters, paths, letter & province maps
 │   ├── ocr_utils.py           # Deskewing, character decoding, and OCR inference
 │   ├── pipeline.py            # Main LicensePlatePipeline orchestration class

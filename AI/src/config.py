@@ -10,6 +10,7 @@ PROJECT_ROOT = os.path.dirname(SRC_DIR)
 PLATE_MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "vehicle_plate.onnx")
 TEXT_MODEL_PATH  = os.path.join(PROJECT_ROOT, "models", "plate_text.onnx")
 VEHICLE_MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "yolov8n.onnx")
+CLASSIFIER_MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "plate_classifier.onnx")
 
 # Default test and output directories
 TEST_IMAGE_DIR = os.path.join(PROJECT_ROOT, "test_images")
@@ -41,11 +42,12 @@ LAO_LETTER_MAP = {
     'A': 'ກ', 'B': 'ຂ', 'C': 'ຄ', 'D': 'ງ', 'E': 'ຈ', 'F': 'ສ', 'G': 'ຊ',
     'H': 'ຍ', 'I': 'ດ', 'J': 'ຕ', 'K': 'ຖ', 'L': 'ທ', 'M': 'ນ', 'N': 'ບ',
     'O': 'ປ', 'P': 'ຜ', 'Q': 'ຝ', 'R': 'ພ', 'S': 'ຟ', 'T': 'ມ', 'U': 'ຢ',
-    'V': 'ຣ', 'W': 'ລ', 'X': 'ວ', 'Y': 'ຫ', 'Z': 'ອ', 'a': 'ຮ',
+    'V': 'ຣ', 'W': 'ລ', 'X': 'ວ', 'Y': 'ຫ', 'Z': 'ອ', 'AA': 'ຮ',
 }
 
 LAO_PROVINCE_MAP = {
     'VTE': 'ນະຄອນຫຼວງວຽງຈັນ (Vientiane)',
+    'VTE2': 'ນະຄອນຫຼວງວຽງຈັນ (Vientiane)',
     'SVK': 'ສະຫວັນນະເຂດ (Savannakhet)',
     'LPB': 'ຫຼວງພະບາງ (Luang Prabang)',
     'KHM': 'ຄໍາມ່ວນ (Khammouane)',
@@ -62,6 +64,8 @@ LAO_PROVINCE_MAP = {
     'PSL': 'ຜົ້ງສາລີ (Phongsaly)',
     'ATP': 'ອັດຕະປື (Attapeu)',
     'XAY': 'ໄຊສົມບູນ (Xaysomboun)',
+    'XSB': 'ໄຊສົມບູນ (Xaysomboun)',
+    'SLV': 'ສາລະວັນ (Salavan)',
 }
 
 LETTER_TO_DIGIT = {
@@ -79,14 +83,13 @@ LOOKALIKE_GROUPS = [
 ]
 
 # ---------------------------------------------------------------------------
-# Plate Type Mappings (HSV Color Rules)
+# Plate Cropping & Padding Settings
 # ---------------------------------------------------------------------------
-COLOR_COMBINATION_TO_PLATE_TYPE = {
-    ('Yellow', 'Black'): 'Private License Plate',
-    ('White', 'Black'): 'Business License Plate (100%)',
-    ('Blue', 'White'): 'State License Plate',
-    ('Dark Blue', 'White'): 'State License Plate',
-    ('White', 'Blue'): 'Business License Plate (1%)',
-    ('Red', 'White'): 'Public License Plate',
-    ('Yellow', 'Blue'): 'Foreign License Plate',
-}
+# Padding (pixels) to expand the initial plate crop coordinates.
+# Ensures no characters are clipped prior to rotation and character detection.
+PLATE_INITIAL_PADDING = 5
+
+# Ratio of padding relative to text block size to expand the auto-cropped plate crop.
+# 0.15 means 15% padding on all sides around the union of character bounding boxes.
+PLATE_AUTO_CROP_PADDING_RATIO = 0.15
+

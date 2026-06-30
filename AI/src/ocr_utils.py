@@ -61,17 +61,63 @@ def group_into_lines(boxes, overlap_ratio_thresh=0.4):
 
 
 def correct_context(line):
-    """Replace letters in digit positions and vice-versa based on index layout."""
-    n = len(line)
-    for idx, box in enumerate(line):
+    """Replace letters in digit positions and vice-versa based on spatial grouping."""
+    # Filter out province names to focus only on letters/digits
+    chars_only = [box for box in line if box['class'] not in config.LAO_PROVINCE_MAP]
+    if not chars_only:
+        return line
+        
+    n = len(chars_only)
+    
+    # We want to find the transition index from letter zone to digit zone in chars_only.
+    best_s = min(2, n)
+    best_penalty = 99999.0
+    
+    min_s = max(0, n - 4)
+    max_s = min(2, n)
+    
+    for s in range(min_s, max_s + 1):
+        penalty = 0.0
+        for idx, box in enumerate(chars_only):
+            cls = box['class']
+            
+            # Definite properties
+            is_def_digit = cls.isdigit() and (cls not in config.DIGIT_TO_LETTER)
+            is_def_letter = (not cls.isdigit()) and (cls not in config.LETTER_TO_DIGIT)
+            
+            if idx < s:  # Letter zone
+                if is_def_digit:
+                    penalty += 10.0
+                elif cls.isdigit():
+                    penalty += 1.5
+            else:  # Digit zone
+                if is_def_letter:
+                    penalty += 10.0
+                elif not cls.isdigit():
+                    penalty += 1.5
+                    
+        # Bias: standard Lao plate has 2 letters and 4 digits if n=6.
+        if n == 6 and s == 2:
+            penalty -= 0.1
+        elif n == 5 and s == 1:
+            penalty -= 0.05
+        elif n == 5 and s == 2:
+            penalty -= 0.05
+            
+        if penalty < best_penalty:
+            best_penalty = penalty
+            best_s = s
+            
+    # Apply corrections to the original line boxes based on whether their chars_only index is in digit zone
+    for idx, box in enumerate(chars_only):
         cls = box['class']
-        if cls in config.LAO_PROVINCE_MAP:
-            continue
-        in_digit_zone = (n - idx) <= 4
+        in_digit_zone = (idx >= best_s)
+        
         if in_digit_zone and not cls.isdigit() and cls in config.LETTER_TO_DIGIT:
             box['class'] = config.LETTER_TO_DIGIT[cls]
         elif not in_digit_zone and cls.isdigit() and cls in config.DIGIT_TO_LETTER:
             box['class'] = config.DIGIT_TO_LETTER[cls]
+            
     return line
 
 
@@ -212,12 +258,30 @@ def rotate_image(img, angle):
     return cv2.warpAffine(img, M, (nW, nH), borderMode=cv2.BORDER_REPLICATE)
 
 
+def apply_clahe(img):
+    """Apply Contrast Limited Adaptive Histogram Equalization to normalize illumination."""
+    if img is None or img.size == 0:
+        return img
+    # Convert BGR to LAB color space
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+    # Apply CLAHE to the lightness channel
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    cl = clahe.apply(l)
+    # Merge channels and convert back to BGR
+    merged = cv2.merge((cl, a, b))
+    return cv2.cvtColor(merged, cv2.COLOR_LAB2BGR)
+
+
 def find_best_rotation_and_ocr(plate_img, text_model):
     """Try multiple rotations and return the one producing the highest OCR confidence score."""
-    best_score, best_angle, best_results, best_img = -1.0, 0, None, plate_img
+    # Apply CLAHE to enhance contrast and character definition
+    processed_plate = apply_clahe(plate_img)
+    
+    best_score, best_angle, best_results, best_img = -1.0, 0, None, processed_plate
 
     for angle in config.ROTATE_ANGLES:
-        rotated = plate_img if angle == 0 else rotate_image(plate_img, angle)
+        rotated = processed_plate if angle == 0 else rotate_image(processed_plate, angle)
         results = text_model(rotated, conf=config.OCR_CONF, iou=config.OCR_IOU,
                              agnostic_nms=True, verbose=False)
         boxes = results[0].boxes
@@ -236,3 +300,54 @@ def find_best_rotation_and_ocr(plate_img, text_model):
             best_score, best_angle, best_results, best_img = score, angle, results, rotated
 
     return best_img, best_results
+
+
+def auto_crop_plate_by_chars(rotated_img, text_boxes):
+    """
+    Auto-crop the rotated plate image around the detected characters 
+    to remove outer background elements (car body paint, frames).
+    """
+    if not text_boxes or len(text_boxes) == 0:
+        return rotated_img
+        
+    h, w = rotated_img.shape[:2]
+    
+    # Extract coordinates of all character boxes
+    xmins, ymins, xmaxs, ymaxs = [], [], [], []
+    for b in text_boxes:
+        xyxy = b.xyxy[0].cpu().numpy()
+        xmins.append(xyxy[0])
+        ymins.append(xyxy[1])
+        xmaxs.append(xyxy[2])
+        ymaxs.append(xyxy[3])
+        
+    xmin = min(xmins)
+    ymin = min(ymins)
+    xmax = max(xmaxs)
+    ymax = max(ymaxs)
+    
+    # Calculate text block size
+    tw = xmax - xmin
+    th = ymax - ymin
+    
+    # Add dynamic padding based on text block size
+    padding_ratio = getattr(config, "PLATE_AUTO_CROP_PADDING_RATIO", 0.15)
+    pad_w = int(tw * padding_ratio)
+    pad_h = int(th * padding_ratio)
+    
+    # Ensure minimum padding to keep plate border intact
+    pad_w = max(10, pad_w)
+    pad_h = max(10, pad_h)
+    
+    # Apply padding
+    px1 = max(0, int(xmin - pad_w))
+    py1 = max(0, int(ymin - pad_h))
+    px2 = min(w, int(xmax + pad_w))
+    py2 = min(h, int(ymax + pad_h))
+    
+    # Check if the cropped area is valid and has actual content
+    if (px2 - px1) > 20 and (py2 - py1) > 20:
+        return rotated_img[py1:py2, px1:px2]
+        
+    return rotated_img
+

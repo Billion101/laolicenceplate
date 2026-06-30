@@ -34,3 +34,6 @@ backend/static/vehicles/*
 # AI Test Images
 AI/test_images/*
 !AI/test_images/.gitkeep
+
+# Temporary training configurations
+**/data_local.yaml

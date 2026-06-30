@@ -5,7 +5,6 @@ ultralytics.utils.checks.AUTOINSTALL = False
 from ultralytics import YOLO
 from . import config
 from . import ocr_utils
-from . import color_utils
 from . import visual_utils
 
 def _calculate_iou(box1, box2):
@@ -29,16 +28,18 @@ def _calculate_iou(box1, box2):
 class LicensePlatePipeline:
     """End-to-end processing pipeline for Lao license plate reading and classification."""
     
-    def __init__(self, plate_model_path=None, text_model_path=None, vehicle_model_path=None):
+    def __init__(self, plate_model_path=None, text_model_path=None, vehicle_model_path=None, classifier_model_path=None):
         # Default to paths defined in config if not specified
         self.plate_model_path = plate_model_path or config.PLATE_MODEL_PATH
         self.text_model_path = text_model_path or config.TEXT_MODEL_PATH
         self.vehicle_model_path = vehicle_model_path or config.VEHICLE_MODEL_PATH
+        self.classifier_model_path = classifier_model_path or config.CLASSIFIER_MODEL_PATH
         
         # Load YOLO models
         self.plate_model = YOLO(self.plate_model_path, task='detect')
         self.text_model  = YOLO(self.text_model_path, task='detect')
         self.vehicle_model = YOLO(self.vehicle_model_path, task='detect')
+        self.classifier_model = YOLO(self.classifier_model_path, task='classify')
         
     def process_image(self, img):
         """
@@ -68,10 +69,11 @@ class LicensePlatePipeline:
                     plate_boxes = self.plate_model(vehicle_crop, conf=config.PLATE_CONF_LOW, iou=config.PLATE_IOU, verbose=False)[0].boxes
                 
                 for b in plate_boxes:
-                    px1 = max(0, int(b.xyxy[0][0]) - 5)
-                    py1 = max(0, int(b.xyxy[0][1]) - 5)
-                    px2 = min(v_w, int(b.xyxy[0][2]) + 5)
-                    py2 = min(v_h, int(b.xyxy[0][3]) + 5)
+                    px1 = max(0, int(b.xyxy[0][0]) - config.PLATE_INITIAL_PADDING)
+                    py1 = max(0, int(b.xyxy[0][1]) - config.PLATE_INITIAL_PADDING)
+                    px2 = min(v_w, int(b.xyxy[0][2]) + config.PLATE_INITIAL_PADDING)
+                    py2 = min(v_h, int(b.xyxy[0][3]) + config.PLATE_INITIAL_PADDING)
+                    
                     cls_name = self.plate_model.names[int(b.cls[0])]
                     crops.append({
                         'box': (vx1 + px1, vy1 + py1, vx1 + px2, vy1 + py2),
@@ -90,10 +92,11 @@ class LicensePlatePipeline:
             
             if plate_boxes:
                 for b in plate_boxes:
-                    xmin = max(0, int(b.xyxy[0][0]) - 5)
-                    ymin = max(0, int(b.xyxy[0][1]) - 5)
-                    xmax = min(w, int(b.xyxy[0][2]) + 5)
-                    ymax = min(h, int(b.xyxy[0][3]) + 5)
+                    xmin = max(0, int(b.xyxy[0][0]) - config.PLATE_INITIAL_PADDING)
+                    ymin = max(0, int(b.xyxy[0][1]) - config.PLATE_INITIAL_PADDING)
+                    xmax = min(w, int(b.xyxy[0][2]) + config.PLATE_INITIAL_PADDING)
+                    ymax = min(h, int(b.xyxy[0][3]) + config.PLATE_INITIAL_PADDING)
+                    
                     cls_name = self.plate_model.names[int(b.cls[0])]
                     crops.append({
                         'box': (xmin, ymin, xmax, ymax),
@@ -151,11 +154,35 @@ class LicensePlatePipeline:
             # --- Stage 3: OCR Text Reconstruction ---
             text_en, text_lao, chars = ocr_utils.reconstruct_plate_text(text_boxes, self.text_model.names)
 
-            # --- Stage 4: Color Analysis ---
-            bg_color, font_color, bg_hsv = color_utils.analyze_plate_colors(rotated, chars)
+            # --- Stage 4: AI Plate Type Classification ---
+            auto_cropped_rotated = ocr_utils.auto_crop_plate_by_chars(rotated, text_boxes)
+            class_results = self.classifier_model(auto_cropped_rotated, conf=0.25, verbose=False)[0]
+            class_id = class_results.probs.top1
+            predicted_style = class_results.names[class_id]
 
-            # Determine Lao license plate type based on color rules
-            plate_type = color_utils.get_plate_type(bg_color, font_color)
+            # Map the class output to human-readable Lao plate names
+            class_mapping = {
+                'private': 'Private License Plate',
+                'state': 'State License Plate',
+                'business_100': 'Business License Plate (100%)',
+                'business_1': 'Business License Plate (1%)',
+                'public': 'Public License Plate',
+                'foreign': 'Foreign License Plate'
+            }
+            plate_type = class_mapping.get(predicted_style, "Unknown License Plate Type")
+
+            # Map background color names for drawing overlays and logs
+            bg_color_mapping = {
+                'private': 'Yellow', 'state': 'Blue', 'public': 'Red',
+                'business_100': 'White', 'business_1': 'White', 'foreign': 'Yellow'
+            }
+            bg_color = bg_color_mapping.get(predicted_style, "Unknown")
+
+            font_color_mapping = {
+                'private': 'Black', 'state': 'White', 'public': 'White',
+                'business_100': 'Black', 'business_1': 'Blue', 'foreign': 'Blue'
+            }
+            font_color = font_color_mapping.get(predicted_style, "Unknown")
 
             # Save result dictionary
             results.append({
@@ -169,7 +196,7 @@ class LicensePlatePipeline:
                 'font_color': font_color,
                 'plate_type': plate_type,
                 'is_fallback': crop_info['is_fallback'],
-                'crop': rotated,
+                'crop': auto_cropped_rotated,
                 'vehicle_crop': crop_info['vehicle_crop'],
                 'vehicle_box': crop_info['vehicle_box']
             })

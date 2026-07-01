@@ -160,27 +160,46 @@ class LicensePlatePipeline:
             class_id = class_results.probs.top1
             predicted_style = class_results.names[class_id]
 
+            # Heuristic Rule: Distinguish between 'international_organization' and 'business_1'
+            # Both have white background and blue text. If a province name is detected in the OCR
+            # character boxes, it is a business plate. If no province is detected, it is an international organization.
+            if predicted_style in ['business_1', 'international_organization']:
+                has_province_detected = any(self.text_model.names[int(b.cls[0])] in config.LAO_PROVINCE_MAP for b in text_boxes)
+                if has_province_detected:
+                    predicted_style = 'business_1'
+                else:
+                    predicted_style = 'international_organization'
+
+            # If it is classified as an international organization, remove any guessed province
+            # from the OCR text outputs since diplomatic/UN/NGO plates do not have provinces.
+            if predicted_style == 'international_organization':
+                text_en = " | ".join([part for part in text_en.split(" | ") if part != "VTE"])
+                text_lao = " | ".join([part for part in text_lao.split(" | ") if "(Guessed)" not in part])
+
             # Map the class output to human-readable Lao plate names
             class_mapping = {
                 'private': 'Private License Plate',
-                'state': 'State License Plate',
+                'government': 'Government License Plate',
                 'business_100': 'Business License Plate (100%)',
                 'business_1': 'Business License Plate (1%)',
-                'public': 'Public License Plate',
-                'foreign': 'Foreign License Plate'
+                'military_police': 'Military/Police License Plate',
+                'foreign': 'Foreign License Plate',
+                'international_organization': 'International Organization Plate'
             }
             plate_type = class_mapping.get(predicted_style, "Unknown License Plate Type")
 
             # Map background color names for drawing overlays and logs
             bg_color_mapping = {
-                'private': 'Yellow', 'state': 'Blue', 'public': 'Red',
-                'business_100': 'White', 'business_1': 'White', 'foreign': 'Yellow'
+                'private': 'Yellow', 'government': 'Blue', 'military_police': 'Red',
+                'business_100': 'White', 'business_1': 'White', 'foreign': 'Yellow',
+                'international_organization': 'White'
             }
             bg_color = bg_color_mapping.get(predicted_style, "Unknown")
 
             font_color_mapping = {
-                'private': 'Black', 'state': 'White', 'public': 'White',
-                'business_100': 'Black', 'business_1': 'Blue', 'foreign': 'Blue'
+                'private': 'Black', 'government': 'White', 'military_police': 'White',
+                'business_100': 'Black', 'business_1': 'Blue', 'foreign': 'Blue',
+                'international_organization': 'Blue'
             }
             font_color = font_color_mapping.get(predicted_style, "Unknown")
 

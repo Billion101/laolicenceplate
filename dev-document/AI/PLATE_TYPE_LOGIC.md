@@ -18,18 +18,19 @@ Previously, the system classified plate types using manual HSV color extraction 
 
 ## 2. Classification Classes & Mappings
 
-The new **`plate_classifier.onnx`** model (trained as a YOLOv8-classify model) outputs a prediction vector across **6 target classes**. 
+The new **`plate_classifier.onnx`** model (trained as a YOLOv8-classify model) outputs a prediction vector across **7 target classes**. 
 
 The system maps the top predicted class label to the corresponding Lao license plate type, background color, and font color for UI display and database logging inside [pipeline.py](file:///c:/Users/billi/Desktop/laolicenceplate/AI/src/pipeline.py):
 
 | Model Class Output | Lao License Plate Type | Display BG Color | Display Font Color | User / Registry Type |
 | :--- | :--- | :--- | :--- | :--- |
 | `private` | Private License Plate | Yellow | Black | General citizens |
-| `state` | State License Plate | Blue | White | Government / State officials |
+| `government` | Government License Plate | Blue | White | Government / State officials |
 | `business_100` | Business License Plate (100%) | White | Black | Commercial, logistics, freight |
 | `business_1` | Business License Plate (1%) | White | Blue | Joint-venture / Business imports |
-| `public` | Public License Plate | Red | White | Taxis, public buses |
-| `foreign` | Foreign License Plate | Yellow | Blue | Diplomatic, Consular, Foreign orgs |
+| `military_police` | Military/Police License Plate | Red | White | Military or Public Security officials |
+| `foreign` | Foreign License Plate | Yellow | Blue | Diplomatic, Consular, Foreign guests |
+| `international_organization` | International Organization Plate | White | Blue | International organizations (e.g. UN, NGO) |
 
 ---
 

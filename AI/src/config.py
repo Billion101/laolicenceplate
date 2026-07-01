@@ -9,7 +9,7 @@ PROJECT_ROOT = os.path.dirname(SRC_DIR)
 # Path to YOLO models inside Re-Clean/models/
 PLATE_MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "vehicle_plate.onnx")
 TEXT_MODEL_PATH  = os.path.join(PROJECT_ROOT, "models", "plate_text.onnx")
-VEHICLE_MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "yolov8n.onnx")
+VEHICLE_MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "vehicle_detect.onnx")
 CLASSIFIER_MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "plate_classifier.onnx")
 
 # Default test and output directories

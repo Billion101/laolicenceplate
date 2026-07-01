@@ -37,3 +37,7 @@ AI/test_images/*
 
 # Temporary training configurations
 **/data_local.yaml
+
+# Thesis documentation and local training workspace
+thesis-doc/
+train/

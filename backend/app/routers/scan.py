@@ -237,3 +237,45 @@ async def get_logs(limit: int = Query(50, ge=1, le=500)):
         return logs
     except Exception as e:
         return []
+
+
+@router.delete("/clear-all", summary="Clear all database logs and physical crop images on disk")
+async def clear_all_data():
+    """
+    Deletes all records from MongoDB and cleans up all JPG image crops 
+    saved on disk under static/plates/ and static/vehicles/.
+    """
+    db = get_database()
+    deleted_count = 0
+    
+    # 1. Clear database logs collection
+    if db is not None:
+        try:
+            delete_res = await db[config.LOGS_COLLECTION].delete_many({})
+            deleted_count = delete_res.deleted_count
+        except Exception as e:
+            print(f"[DB DELETE ERROR] Failed to clear collection: {e}")
+            
+    # 2. Clear local static images on disk
+    static_dir = os.path.join(config.BACKEND_DIR, "static")
+    plates_dir = os.path.join(static_dir, "plates")
+    vehicles_dir = os.path.join(static_dir, "vehicles")
+    
+    deleted_files = 0
+    
+    for directory in [plates_dir, vehicles_dir]:
+        if os.path.exists(directory):
+            for file_name in os.listdir(directory):
+                file_path = os.path.join(directory, file_name)
+                if os.path.isfile(file_path) and file_name.lower().endswith('.jpg'):
+                    try:
+                        os.remove(file_path)
+                        deleted_files += 1
+                    except Exception as fe:
+                        print(f"[FILE DELETE ERROR] Failed to remove {file_path}: {fe}")
+                        
+    return {
+        "success": True,
+        "message": f"Successfully deleted {deleted_count} database logs and {deleted_files} local image files."
+    }
+

@@ -3,12 +3,15 @@ import { Navbar } from "./components/Navbar";
 import { VideoScanner } from "./components/VideoScanner";
 import { ImageScanner } from "./components/ImageScanner";
 import { PlateDatabase } from "./components/PlateDatabase";
+import { WebcamScanner } from "./components/WebcamScanner";
 
 function App() {
-  const [activeTab, setActiveTab] = useState("image");
+  const [activeTab, setActiveTab] = useState("live");
 
   const renderActiveView = () => {
     switch (activeTab) {
+      case "live":
+        return <WebcamScanner />;
       case "video":
         return <VideoScanner />;
       case "image":

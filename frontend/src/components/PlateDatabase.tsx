@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api, BACKEND_URL } from "../services/api";
 import type { LogRecord } from "../services/api";
-import { Database, Search, RefreshCw, AlertCircle, Loader2, Calendar } from "lucide-react";
+import { Database, Search, RefreshCw, AlertCircle, Loader2, Calendar, Trash2 } from "lucide-react";
 
 export const PlateDatabase: React.FC = () => {
   const [logs, setLogs] = useState<LogRecord[]>([]);
@@ -24,6 +24,23 @@ export const PlateDatabase: React.FC = () => {
       setError("Failed to fetch logs. Make sure the backend is online and MongoDB is running.");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this scan log? This will remove it from the database and delete the image crops on disk.")) {
+      return;
+    }
+    
+    try {
+      const response = await api.deleteLog(id);
+      if (response.success) {
+        setLogs((prevLogs) => prevLogs.filter((log) => log._id !== id));
+      } else {
+        alert(response.error || "Failed to delete log record.");
+      }
+    } catch (err: any) {
+      console.error(err);
     }
   };
 
@@ -211,10 +228,17 @@ export const PlateDatabase: React.FC = () => {
                 {/* Card Info */}
                 <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
                   <div className="space-y-3">
-                    <div className="flex justify-between items-start gap-2">
+                    <div className="flex justify-between items-center w-full gap-2">
                       <span className={getPlateBadgeStyle(log.plate_type)}>
                         {log.plate_type.replace(" License Plate", "")}
                       </span>
+                      <button
+                        onClick={() => handleDelete(log._id)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition duration-150"
+                        title="Delete Record"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
 
                     <div>

@@ -94,5 +94,21 @@ export const api = {
    */
   getVideoStreamUrl(filename: string): string {
     return `${BACKEND_URL}/api/v1/scan/video/stream?filename=${encodeURIComponent(filename)}`;
+  },
+
+  /**
+   * Delete a single scan log record by ID
+   */
+  async deleteLog(id: string): Promise<{ success: boolean; message?: string; error?: string }> {
+    const response = await fetch(`${BACKEND_URL}/api/v1/scan/delete/${id}`, {
+      method: "DELETE",
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Deletion failed with status: ${response.status}`);
+    }
+    
+    return response.json();
   }
 };
+

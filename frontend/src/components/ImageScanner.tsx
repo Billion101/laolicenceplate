@@ -129,8 +129,8 @@ export const ImageScanner: React.FC = () => {
     if (type.includes("business_1") || (type.includes("business") && type.includes("1%"))) return "ວິສາຫະກິດ 1%";
     if (type.includes("public")) return "ສາທາລະນະ";
     if (type.includes("foreign")) return "ຕ່າງປະເທດ";
-    if (type.includes("international_organization")) return "ອົງການຈັດຕັ້ງສາກົນ";
-    if (type.includes("military_police")) return "ທະຫານ-ຕຳຫຼວດ";
+    if (type.includes("international") || type.includes("organization")) return "ອົງການຈັດຕັ້ງສາກົນ";
+    if (type.includes("military") || type.includes("police")) return "ທະຫານ-ຕຳຫຼວດ";
     return "ທົ່ວໄປ";
   };
 

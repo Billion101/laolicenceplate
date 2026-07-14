@@ -219,7 +219,7 @@ export const VideoScanner: React.FC = () => {
                         Log {detections.length - index}
                       </span>
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 text-slate-700 border border-slate-200 shrink-0">
-                        {plate.plate_type.replace(" License Plate", "")}
+                        {plate.plate_type.replace(" License Plate", "").split(" (")[0]}
                       </span>
                       <span className="text-xs text-sky-600 font-bold ml-auto shrink-0">
                         {(plate.confidence * 100).toFixed(0)}% Conf

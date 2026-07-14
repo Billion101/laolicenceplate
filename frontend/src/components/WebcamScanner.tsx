@@ -357,7 +357,7 @@ export const WebcamScanner: React.FC = () => {
                         </div>
                         <div className="col-span-2">
                           <span className="text-slate-400 font-medium">Type: </span>
-                          <strong className="text-slate-700">{det.plate_type.replace(" License Plate", "")}</strong>
+                          <strong className="text-slate-700">{det.plate_type.replace(" License Plate", "").split(" (")[0]}</strong>
                         </div>
                       </div>
                     </div>
@@ -403,7 +403,7 @@ export const WebcamScanner: React.FC = () => {
                           Logged
                         </span>
                         <span className="px-2 py-0.5 rounded text-[9px] font-bold uppercase bg-white text-slate-700 border border-slate-200 shrink-0">
-                          {log.plate_type.replace(" License Plate", "")}
+                          {log.plate_type.replace(" License Plate", "").split(" (")[0]}
                         </span>
                         <span className="text-[11px] text-slate-400 ml-auto font-medium">
                           {(log.confidence * 100).toFixed(0)}% Conf

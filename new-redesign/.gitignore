@@ -1,0 +1,28 @@
+# Python Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python Compiled Caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Node dependencies and build outputs
+node_modules/
+dist/
+.vite/
+
+# Local configuration files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# OS metadata
+.DS_Store
+Thumbs.db
+Desktop.ini

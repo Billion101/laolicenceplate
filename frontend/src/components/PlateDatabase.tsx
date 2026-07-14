@@ -65,7 +65,7 @@ export const PlateDatabase: React.FC = () => {
     if (type.includes("private")) {
       // Yellow background, black font
       return "bg-[#facc15] text-slate-900 border-[#eab308] border-2 shadow-sm font-bold uppercase text-[11px] px-2.5 py-1 rounded-md";
-    } else if (type.includes("state")) {
+    } else if (type.includes("state") || type.includes("government")) {
       // Blue background, white font
       return "bg-[#1d4ed8] text-white border-[#1e40af] border-2 shadow-sm font-bold uppercase text-[11px] px-2.5 py-1 rounded-md";
     } else if (type.includes("business") && type.includes("1%")) {
@@ -74,12 +74,15 @@ export const PlateDatabase: React.FC = () => {
     } else if (type.includes("business")) {
       // White background, black font
       return "bg-white text-slate-950 border-slate-300 border-2 shadow-sm font-bold uppercase text-[11px] px-2.5 py-1 rounded-md";
-    } else if (type.includes("public")) {
+    } else if (type.includes("public") || type.includes("military") || type.includes("police")) {
       // Red background, white font
       return "bg-[#dc2626] text-white border-[#b91c1c] border-2 shadow-sm font-bold uppercase text-[11px] px-2.5 py-1 rounded-md";
     } else if (type.includes("foreign")) {
       // Yellow background, blue font
       return "bg-[#facc15] text-[#1d4ed8] border-[#eab308] border-2 shadow-sm font-bold uppercase text-[11px] px-2.5 py-1 rounded-md";
+    } else if (type.includes("international") || type.includes("organization")) {
+      // White background, blue font
+      return "bg-white text-[#1d4ed8] border-[#1d4ed8] border-2 shadow-sm font-bold uppercase text-[11px] px-2.5 py-1 rounded-md";
     }
     
     return "bg-slate-100 text-slate-700 border-slate-300 border shadow-sm font-bold uppercase text-[11px] px-2.5 py-1 rounded-md";
@@ -230,7 +233,7 @@ export const PlateDatabase: React.FC = () => {
                   <div className="space-y-3">
                     <div className="flex justify-between items-center w-full gap-2">
                       <span className={getPlateBadgeStyle(log.plate_type)}>
-                        {log.plate_type.replace(" License Plate", "")}
+                        {log.plate_type.replace(" License Plate", "").split(" (")[0]}
                       </span>
                       <button
                         onClick={() => handleDelete(log._id)}

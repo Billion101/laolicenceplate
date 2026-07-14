@@ -109,6 +109,35 @@ export const api = {
     }
     
     return response.json();
+  },
+
+  /**
+   * Run sandbox inference with flexible model choice
+   */
+  async scanFlexibleSandbox(
+    file: File,
+    runVehicle: boolean,
+    runPlate: boolean,
+    runOcr: boolean,
+    runClassifier: boolean
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("run_vehicle", runVehicle.toString());
+    formData.append("run_plate", runPlate.toString());
+    formData.append("run_ocr", runOcr.toString());
+    formData.append("run_classifier", runClassifier.toString());
+
+    const response = await fetch(`${BACKEND_URL}/api/v1/scan/flexible-pipeline`, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Flexible sandbox failed with status: ${response.status}`);
+    }
+
+    return response.json();
   }
 };
 

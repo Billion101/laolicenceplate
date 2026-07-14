@@ -330,14 +330,11 @@ def auto_crop_plate_by_chars(rotated_img, text_boxes):
     tw = xmax - xmin
     th = ymax - ymin
     
-    # Add dynamic padding based on text block size
-    padding_ratio = getattr(config, "PLATE_AUTO_CROP_PADDING_RATIO", 0.15)
-    pad_w = int(tw * padding_ratio)
-    pad_h = int(th * padding_ratio)
-    
-    # Ensure minimum padding to keep plate border intact
-    pad_w = max(10, pad_w)
-    pad_h = max(10, pad_h)
+    # Set a fixed padding of exactly 20px on all sides (top, bottom, left, right)
+    # This ensures we capture enough plate background color (blue/red/yellow) for 
+    # the classifier without expanding out into the car bumper paint.
+    pad_w = 20
+    pad_h = 20
     
     # Apply padding
     px1 = max(0, int(xmin - pad_w))

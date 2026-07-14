@@ -3,23 +3,23 @@ import { Navbar } from "./components/Navbar";
 import { VideoScanner } from "./components/VideoScanner";
 import { ImageScanner } from "./components/ImageScanner";
 import { PlateDatabase } from "./components/PlateDatabase";
-import { WebcamScanner } from "./components/WebcamScanner";
+import { ModelSandbox } from "./components/ModelSandbox";
 
 function App() {
-  const [activeTab, setActiveTab] = useState("live");
+  const [activeTab, setActiveTab] = useState("video");
 
   const renderActiveView = () => {
     switch (activeTab) {
-      case "live":
-        return <WebcamScanner />;
       case "video":
         return <VideoScanner />;
       case "image":
         return <ImageScanner />;
+      case "sandbox":
+        return <ModelSandbox />;
       case "logs":
         return <PlateDatabase />;
       default:
-        return <ImageScanner />;
+        return <VideoScanner />;
     }
   };
 

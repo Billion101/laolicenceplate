@@ -126,7 +126,7 @@ export const VideoScanner: React.FC = () => {
                     <Upload className="w-7 h-7" />
                   </div>
                   <p className="font-semibold text-slate-700">Click or drag video file here</p>
-                  <p className="text-xs text-slate-400 mt-1">Supports MP4, AVI, MOV (Max size 50MB)</p>
+                  <p className="text-xs text-slate-400 mt-1">Supports MP4, AVI, MOV (Up to 500MB)</p>
                 </label>
               </div>
             )}

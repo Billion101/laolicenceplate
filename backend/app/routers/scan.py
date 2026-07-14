@@ -4,7 +4,7 @@ import base64
 import time
 import os
 import asyncio
-from fastapi import APIRouter, UploadFile, File, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, UploadFile, File, Query, Form
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional
@@ -79,8 +79,33 @@ RECENT_DETECTIONS = []
 RECENT_DETECTIONS_COOLDOWN = 10.0  # seconds
 
 
-def is_duplicate_detection(ocr_en: str) -> bool:
-    """Check if the plate has been recently detected to avoid duplicate DB logging."""
+def calculate_box_iou(box1, box2) -> float:
+    """Calculate Intersection over Union (IoU) between two bounding boxes [x1, y1, x2, y2]."""
+    if not box1 or not box2:
+        return 0.0
+        
+    xA = max(box1[0], box2[0])
+    yA = max(box1[1], box2[1])
+    xB = min(box1[2], box2[2])
+    yB = min(box1[3], box2[3])
+    
+    interArea = max(0, xB - xA) * max(0, yB - yA)
+    box1Area = (box1[2] - box1[0]) * (box1[3] - box1[1])
+    box2Area = (box2[2] - box2[0]) * (box2[3] - box2[1])
+    
+    unionArea = box1Area + box2Area - interArea
+    if unionArea == 0:
+        return 0.0
+        
+    return interArea / unionArea
+
+
+def check_duplicate_and_update(ocr_en: str, confidence: float, vehicle_box=None, plate_box=None) -> tuple:
+    """
+    Check if the plate or vehicle has been recently detected to avoid duplicate DB logging.
+    If the new detection has higher confidence, flag it for database updating.
+    Returns: (is_duplicate, is_better_match, cached_id)
+    """
     global RECENT_DETECTIONS
     current_time = time.time()
     
@@ -91,20 +116,47 @@ def is_duplicate_detection(ocr_en: str) -> bool:
     ]
     
     for item in RECENT_DETECTIONS:
-        if is_same_plate(item["ocr_en"], ocr_en):
-            # Reset timestamp while it remains in active view (heartbeat)
-            item["timestamp"] = current_time
-            return True
+        # Match condition 1: OCR is the same (ignoring identical province text prefix)
+        ocr_match = False
+        p1_clean = ocr_en.split("|")[-1]
+        p2_clean = item["ocr_en"].split("|")[-1]
+        n1 = "".join(c for c in p1_clean if c.isalnum()).upper()
+        n2 = "".join(c for c in p2_clean if c.isalnum()).upper()
+        if is_same_plate(n1, n2):
+            ocr_match = True
             
-    # Add new item
-    RECENT_DETECTIONS.append({
-        "ocr_en": ocr_en,
-        "timestamp": current_time
-    })
-    return False
+        # Match condition 2: Bounding Box Overlap (IoU tracking between sequential frames)
+        box_match = False
+        if vehicle_box and item.get("vehicle_box"):
+            iou = calculate_box_iou(vehicle_box, item["vehicle_box"])
+            if iou > 0.4:
+                box_match = True
+                
+        if plate_box and item.get("plate_box"):
+            piou = calculate_box_iou(plate_box, item["plate_box"])
+            if piou > 0.4:
+                box_match = True
+
+        # Treat as duplicate if EITHER OCR matches OR spatial box coordinates overlap
+        if ocr_match or box_match:
+            # Reset timestamp (heartbeat)
+            item["timestamp"] = current_time
+            if vehicle_box:
+                item["vehicle_box"] = vehicle_box
+            if plate_box:
+                item["plate_box"] = plate_box
+            
+            # Check if this new detection has higher confidence
+            if confidence > item["confidence"]:
+                item["confidence"] = confidence
+                item["ocr_en"] = ocr_en
+                return True, True, item["_id"]
+            return True, False, item["_id"]
+            
+    return False, False, None
 
 
-async def log_detection_to_db(detection: dict):
+async def log_detection_to_db(detection: dict, existing_id=None):
     """Save a plate detection log entry into MongoDB and save the crop image locally."""
     db = get_database()
     
@@ -113,8 +165,8 @@ async def log_detection_to_db(detection: dict):
     vehicle_crop = detection.pop('vehicle_crop', None)
     detection.pop('vehicle_box', None)
     
-    # Generate a unique ObjectId
-    doc_id = ObjectId()
+    # Use existing ID if updating, otherwise generate a unique ObjectId
+    doc_id = existing_id if existing_id is not None else ObjectId()
     str_id = str(doc_id)
     
     # Save the crop image locally if it exists and is a valid numpy array
@@ -158,7 +210,6 @@ async def log_detection_to_db(detection: dict):
     
     try:
         log_entry = {
-            "_id": doc_id,
             "timestamp": time.time(),
             "ocr_en": detection.get("ocr_en", ""),
             "ocr_lao": detection.get("ocr_lao", ""),
@@ -166,14 +217,32 @@ async def log_detection_to_db(detection: dict):
             "font_color": detection.get("font_color", ""),
             "plate_type": detection.get("plate_type", ""),
             "confidence": float(detection.get("confidence", 0.0)),
-            "image_url": image_url,
-            "vehicle_image_url": vehicle_image_url
         }
+        if image_url:
+            log_entry["image_url"] = image_url
+        if vehicle_image_url:
+            log_entry["vehicle_image_url"] = vehicle_image_url
+
+        if existing_id is not None:
+            existing_doc = await db[config.LOGS_COLLECTION].find_one({"_id": existing_id})
+            if existing_doc:
+                await db[config.LOGS_COLLECTION].update_one({"_id": existing_id}, {"$set": log_entry})
+                detection["image_url"] = image_url if image_url else existing_doc.get("image_url", "")
+                detection["vehicle_image_url"] = vehicle_image_url if vehicle_image_url else existing_doc.get("vehicle_image_url", "")
+                return True
+
+        # Otherwise perform insert
+        log_entry["_id"] = doc_id
+        if "image_url" not in log_entry:
+            log_entry["image_url"] = image_url
+        if "vehicle_image_url" not in log_entry:
+            log_entry["vehicle_image_url"] = vehicle_image_url
+
         await db[config.LOGS_COLLECTION].insert_one(log_entry)
         
         # Update the detection dictionary with dynamic image_urls
-        detection["image_url"] = image_url
-        detection["vehicle_image_url"] = vehicle_image_url
+        detection["image_url"] = log_entry["image_url"]
+        detection["vehicle_image_url"] = log_entry["vehicle_image_url"]
         return True
     except Exception as e:
         print(f"[DB ERROR] Failed to save detection log to MongoDB: {e}")
@@ -217,6 +286,7 @@ async def upload_video(file: UploadFile = File(...)):
     """
     Accepts an uploaded video file, stores it temporarily, and returns the filename
     so that it can be streamed via a GET request in an <img> tag.
+    Reads chunk-by-chunk to handle large files (e.g. 400MB+) safely without memory exhaustion.
     """
     temp_dir = os.path.join(config.BACKEND_DIR, "temp")
     os.makedirs(temp_dir, exist_ok=True)
@@ -225,8 +295,11 @@ async def upload_video(file: UploadFile = File(...)):
 
     try:
         with open(temp_video_path, "wb") as buffer:
-            contents = await file.read()
-            buffer.write(contents)
+            while True:
+                chunk = await file.read(1024 * 1024)  # Read in 1MB chunks
+                if not chunk:
+                    break
+                buffer.write(chunk)
     except Exception as e:
         return {"success": False, "error": f"Failed to save video: {str(e)}"}
 
@@ -238,6 +311,7 @@ async def stream_video(filename: str = Query(...)):
     """
     Accepts a temporary video filename, processes it frame-by-frame, and streams
     the annotated frames back in real-time as an MJPEG stream.
+    Updates duplicate plate logs with higher confidence detections in real-time.
     """
     temp_dir = os.path.join(config.BACKEND_DIR, "temp")
     temp_video_path = os.path.join(temp_dir, filename)
@@ -258,12 +332,27 @@ async def stream_video(filename: str = Query(...)):
                 # Run plate detection and overlay
                 results, annotated_frame = pipeline.process_image(frame)
                 
-                # Log detections to MongoDB if found, filtering out duplicates
+                # Log detections to MongoDB if found, filtering out duplicates or updating better matches
                 for res in results:
                     ocr = res.get("ocr_en", "")
+                    conf = res.get("confidence", 0.0)
+                    vbox = res.get("vehicle_box")
+                    pbox = res.get("box")
                     if ocr:
-                        if not is_duplicate_detection(ocr):
-                            await log_detection_to_db(res)
+                        is_dup, is_better, cached_id = check_duplicate_and_update(ocr, conf, vbox, pbox)
+                        if not is_dup:
+                            doc_id = ObjectId()
+                            await log_detection_to_db(res, existing_id=doc_id)
+                            RECENT_DETECTIONS.append({
+                                "_id": doc_id,
+                                "ocr_en": ocr,
+                                "confidence": conf,
+                                "vehicle_box": vbox,
+                                "plate_box": pbox,
+                                "timestamp": time.time()
+                            })
+                        elif is_better:
+                            await log_detection_to_db(res, existing_id=cached_id)
 
                 # Encode frame to JPEG
                 ret_enc, jpeg = cv2.imencode('.jpg', annotated_frame)
@@ -282,87 +371,6 @@ async def stream_video(filename: str = Query(...)):
                 os.remove(temp_video_path)
 
     return StreamingResponse(frame_generator(), media_type="multipart/x-mixed-replace; boundary=frame")
-
-
-@router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    """
-    WebSocket endpoint for real-time camera scanning. Receives base64 encoded frames,
-    runs the AI cascade pipeline, checks/filters duplicate vehicles, saves new detections
-    to MongoDB, and returns annotated images and data back to the client.
-    """
-    await websocket.accept()
-    pipeline = AIService.get_pipeline()
-    print("--> Live Camera WebSocket client connected")
-    
-    try:
-        while True:
-            # Receive frame JSON payload
-            data = await websocket.receive_json()
-            frame_data = data.get("frame")
-            if not frame_data:
-                continue
-                
-            # Remove base64 metadata headers if present
-            if "," in frame_data:
-                _, encoded = frame_data.split(",", 1)
-            else:
-                encoded = frame_data
-                
-            # Decode JPEG image
-            nparr = np.frombuffer(base64.b64decode(encoded), np.uint8)
-            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            
-            if frame is None:
-                await websocket.send_json({"error": "Invalid frame"})
-                continue
-                
-            # Run plate detection and OCR pipeline
-            results, annotated_frame = pipeline.process_image(frame)
-            
-            frame_detections = []
-            for res in results:
-                ocr = res.get("ocr_en", "")
-                is_dup = False
-                
-                if ocr:
-                    is_dup = is_duplicate_detection(ocr)
-                
-                logged = False
-                # Log detection to DB and save physical crops if not a duplicate
-                if ocr and not is_dup:
-                    logged = await log_detection_to_db(res)
-                
-                frame_detections.append({
-                    "ocr_en": res.get("ocr_en", ""),
-                    "ocr_lao": res.get("ocr_lao", ""),
-                    "bg_color": res.get("bg_color", ""),
-                    "font_color": res.get("font_color", ""),
-                    "plate_type": res.get("plate_type", ""),
-                    "confidence": float(res.get("confidence", 0.0)),
-                    "is_duplicate": is_dup,
-                    "logged": logged,
-                    "image_url": res.get("image_url", ""),
-                    "vehicle_image_url": res.get("vehicle_image_url", "")
-                })
-                
-            # Encode processed/annotated frame to JPEG
-            ret_enc, jpeg = cv2.imencode('.jpg', annotated_frame)
-            if not ret_enc:
-                continue
-                
-            base64_image = base64.b64encode(jpeg).decode('utf-8')
-            
-            # Send results back
-            await websocket.send_json({
-                "annotated_image": f"data:image/jpeg;base64,{base64_image}",
-                "detections": frame_detections
-            })
-            
-    except WebSocketDisconnect:
-        print("--> Live Camera WebSocket client disconnected")
-    except Exception as e:
-        print(f"--> WebSocket error: {e}")
 
 
 
@@ -489,5 +497,220 @@ async def delete_log(log_id: str):
         "success": True, 
         "message": f"Successfully deleted log {log_id} and {file_deleted_count} crop images."
     }
+
+@router.post("/flexible-pipeline", summary="Sandbox inference without saving to DB")
+async def scan_flexible_sandbox(
+    file: UploadFile = File(...),
+    run_vehicle: bool = Form(True),
+    run_plate: bool = Form(True),
+    run_ocr: bool = Form(True),
+    run_classifier: bool = Form(True)
+):
+    contents = await file.read()
+    nparr = np.frombuffer(contents, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if img is None:
+        return {"success": False, "error": "Invalid image file"}
+
+    pipeline = AIService.get_pipeline()
+    vehicle_model = pipeline.vehicle_model
+    plate_model = pipeline.plate_model
+    text_model = pipeline.text_model
+    classifier_model = pipeline.classifier_model
+
+    h, w = img.shape[:2]
+    annotated_img = img.copy()
+    detections = []
+    
+    ocr_en = ""
+    ocr_lao = ""
+    
+    predicted_style = ""
+    classifier_conf = 0.0
+    style_label = ""
+    bg_color = ""
+    font_color = ""
+
+    def crop_box(image, box):
+        x1, y1, x2, y2 = [max(0, int(c)) for c in box]
+        ih, iw = image.shape[:2]
+        x2, y2 = min(iw, x2), min(ih, y2)
+        return image[y1:y2, x1:x2]
+
+    # Reconstruct text utility function (same as in scan.py/AI)
+    from src.ocr_utils import reconstruct_plate_text
+
+    # CASE A: Run Vehicle Detection first
+    if run_vehicle:
+        vehicle_results = vehicle_model(img, verbose=False)[0]
+        for b in vehicle_results.boxes:
+            v_xyxy = b.xyxy[0].tolist()
+            v_conf = float(b.conf[0])
+            cv2.rectangle(annotated_img, (int(v_xyxy[0]), int(v_xyxy[1])), (int(v_xyxy[2]), int(v_xyxy[3])), (0, 255, 0), 2)
+            cv2.putText(annotated_img, f"Vehicle {v_conf:.2f}", (int(v_xyxy[0]), int(v_xyxy[1]) - 5), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            
+            detections.append({
+                "box": [round(x, 1) for x in v_xyxy],
+                "confidence": round(v_conf, 4),
+                "class_name": "Vehicle"
+            })
+
+            if run_plate:
+                v_crop = crop_box(img, v_xyxy)
+                if v_crop.size > 0:
+                    plate_results = plate_model(v_crop, verbose=False)[0]
+                    for pb in plate_results.boxes:
+                        p_xyxy = pb.xyxy[0].tolist()
+                        p_conf = float(pb.conf[0])
+                        abs_p_box = [
+                            v_xyxy[0] + p_xyxy[0],
+                            v_xyxy[1] + p_xyxy[1],
+                            v_xyxy[0] + p_xyxy[2],
+                            v_xyxy[1] + p_xyxy[3]
+                        ]
+                        cv2.rectangle(annotated_img, (int(abs_p_box[0]), int(abs_p_box[1])), (int(abs_p_box[2]), int(abs_p_box[3])), (255, 0, 0), 2)
+                        cv2.putText(annotated_img, f"Plate {p_conf:.2f}", (int(abs_p_box[0]), int(abs_p_box[1]) - 5),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+                        
+                        detections.append({
+                            "box": [round(x, 1) for x in abs_p_box],
+                            "confidence": round(p_conf, 4),
+                            "class_name": "Plate"
+                        })
+
+                        p_crop = crop_box(v_crop, p_xyxy)
+                        if p_crop.size > 0:
+                            if run_ocr:
+                                text_results = text_model(p_crop, verbose=False)[0]
+                                if text_results.boxes:
+                                    t_en, t_lao, _ = reconstruct_plate_text(text_results.boxes, text_model.names)
+                                    ocr_en = t_en
+                                    ocr_lao = t_lao
+                                    for tb in text_results.boxes:
+                                        tb_xyxy = tb.xyxy[0].tolist()
+                                        abs_tb_box = [
+                                            abs_p_box[0] + tb_xyxy[0],
+                                            abs_p_box[1] + tb_xyxy[1],
+                                            abs_p_box[0] + tb_xyxy[2],
+                                            abs_p_box[1] + tb_xyxy[3]
+                                        ]
+                                        cv2.rectangle(annotated_img, (int(abs_tb_box[0]), int(abs_tb_box[1])), (int(abs_tb_box[2]), int(abs_tb_box[3])), (0, 255, 255), 1)
+                            if run_classifier:
+                                class_results = classifier_model(p_crop, verbose=False)[0]
+                                top1_id = class_results.probs.top1
+                                classifier_conf = float(class_results.probs.top1conf)
+                                predicted_style = class_results.names[top1_id]
+                                
+    # CASE B: No Vehicle Detection, but Plate Detection is on
+    elif run_plate:
+        plate_results = plate_model(img, verbose=False)[0]
+        for pb in plate_results.boxes:
+            p_xyxy = pb.xyxy[0].tolist()
+            p_conf = float(pb.conf[0])
+            cv2.rectangle(annotated_img, (int(p_xyxy[0]), int(p_xyxy[1])), (int(p_xyxy[2]), int(p_xyxy[3])), (255, 0, 0), 2)
+            cv2.putText(annotated_img, f"Plate {p_conf:.2f}", (int(p_xyxy[0]), int(p_xyxy[1]) - 5),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+            
+            detections.append({
+                "box": [round(x, 1) for x in p_xyxy],
+                "confidence": round(p_conf, 4),
+                "class_name": "Plate"
+            })
+
+            p_crop = crop_box(img, p_xyxy)
+            if p_crop.size > 0:
+                if run_ocr:
+                    text_results = text_model(p_crop, verbose=False)[0]
+                    if text_results.boxes:
+                        t_en, t_lao, _ = reconstruct_plate_text(text_results.boxes, text_model.names)
+                        ocr_en = t_en
+                        ocr_lao = t_lao
+                        for tb in text_results.boxes:
+                            tb_xyxy = tb.xyxy[0].tolist()
+                            abs_tb_box = [
+                                p_xyxy[0] + tb_xyxy[0],
+                                p_xyxy[1] + tb_xyxy[1],
+                                p_xyxy[0] + tb_xyxy[2],
+                                p_xyxy[1] + tb_xyxy[3]
+                            ]
+                            cv2.rectangle(annotated_img, (int(abs_tb_box[0]), int(abs_tb_box[1])), (int(abs_tb_box[2]), int(abs_tb_box[3])), (0, 255, 255), 1)
+                if run_classifier:
+                    class_results = classifier_model(p_crop, verbose=False)[0]
+                    top1_id = class_results.probs.top1
+                    classifier_conf = float(class_results.probs.top1conf)
+                    predicted_style = class_results.names[top1_id]
+
+    # CASE C: Neither Vehicle nor Plate detection, but OCR is on
+    elif run_ocr:
+        text_results = text_model(img, verbose=False)[0]
+        if text_results.boxes:
+            t_en, t_lao, _ = reconstruct_plate_text(text_results.boxes, text_model.names)
+            ocr_en = t_en
+            ocr_lao = t_lao
+            for tb in text_results.boxes:
+                tb_xyxy = tb.xyxy[0].tolist()
+                cv2.rectangle(annotated_img, (int(tb_xyxy[0]), int(tb_xyxy[1])), (int(tb_xyxy[2]), int(tb_xyxy[3])), (0, 255, 255), 1)
+                
+                detections.append({
+                    "box": [round(x, 1) for x in tb_xyxy],
+                    "confidence": round(float(tb.conf[0]), 4),
+                    "char": text_model.names[int(tb.cls[0])]
+                })
+
+        if run_classifier:
+            class_results = classifier_model(img, verbose=False)[0]
+            top1_id = class_results.probs.top1
+            classifier_conf = float(class_results.probs.top1conf)
+            predicted_style = class_results.names[top1_id]
+
+    # CASE D: Only Classifier is enabled
+    elif run_classifier:
+        class_results = classifier_model(img, verbose=False)[0]
+        top1_id = class_results.probs.top1
+        classifier_conf = float(class_results.probs.top1conf)
+        predicted_style = class_results.names[top1_id]
+
+    if predicted_style:
+        class_mapping = {
+            'private': 'Private License Plate (Yellow bg, Black text)',
+            'government': 'Government License Plate (Blue bg, White text)',
+            'state': 'Government License Plate (Blue bg, White text)',
+            'business_100': 'Business License Plate 100% (White bg, Black text)',
+            'business_1': 'Business License Plate 1% (White bg, Blue text)',
+            'military_police': 'Military/Police License Plate (Red bg, White text)',
+            'public': 'Military/Police License Plate (Red bg, White text)',
+            'foreign': 'Foreign License Plate (Yellow bg, Blue text)',
+            'international_organization': 'International Organization Plate (White bg, Blue text)'
+        }
+        bg_color_mapping = {
+            'private': 'Yellow', 'government': 'Blue', 'state': 'Blue', 'military_police': 'Red', 'public': 'Red',
+            'business_100': 'White', 'business_1': 'White', 'foreign': 'Yellow',
+            'international_organization': 'White'
+        }
+        font_color_mapping = {
+            'private': 'Black', 'government': 'White', 'state': 'White', 'military_police': 'White', 'public': 'White',
+            'business_100': 'Black', 'business_1': 'Blue', 'foreign': 'Blue',
+            'international_organization': 'Blue'
+        }
+        style_label = class_mapping.get(predicted_style, "Unknown License Plate Type")
+        bg_color = bg_color_mapping.get(predicted_style, "Unknown")
+        font_color = font_color_mapping.get(predicted_style, "Unknown")
+
+    _, encoded = cv2.imencode('.jpg', annotated_img)
+    base64_image = base64.b64encode(encoded).decode('utf-8')
+    return {
+        "success": True,
+        "annotated_image": f"data:image/jpeg;base64,{base64_image}",
+        "detections": detections,
+        "text_en": ocr_en,
+        "text_lao": ocr_lao,
+        "predicted_style": predicted_style,
+        "confidence": round(classifier_conf, 4) if predicted_style else None,
+        "label": style_label if predicted_style else None,
+        "bg_color": bg_color if predicted_style else None,
+        "font_color": font_color if predicted_style else None
+    }
+
 
 

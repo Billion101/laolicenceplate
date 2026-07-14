@@ -86,8 +86,9 @@ LOOKALIKE_GROUPS = [
 # Plate Cropping & Padding Settings
 # ---------------------------------------------------------------------------
 # Padding (pixels) to expand the initial plate crop coordinates.
-# Ensures no characters are clipped prior to rotation and character detection.
-PLATE_INITIAL_PADDING = 5
+# Ensures no characters are clipped prior to rotation and character detection,
+# and provides a perfect 20px border for the plate classifier.
+PLATE_INITIAL_PADDING = 20
 
 # Ratio of padding relative to text block size to expand the auto-cropped plate crop.
 # 0.15 means 15% padding on all sides around the union of character bounding boxes.

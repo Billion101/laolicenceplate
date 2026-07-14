@@ -15,13 +15,14 @@ import {
   Radio,
   StopCircle,
   RefreshCw,
-  Award
+  Award,
+  Sliders
 } from 'lucide-react';
 import './App.css';
 
 const BACKEND_URL = "http://localhost:8001";
 
-type TabType = 'vehicle_detect' | 'plate_detect' | 'plate_ocr' | 'plate_classify';
+type TabType = 'vehicle_detect' | 'plate_detect' | 'plate_ocr' | 'plate_classify' | 'pipeline_sandbox';
 
 interface Detection {
   box: [number, number, number, number];
@@ -62,6 +63,12 @@ function App() {
   
   // Real-time Background filtering (Best candidate selection)
   const [bestResult, setBestResult] = useState<TestResult | null>(null);
+  
+  // Flexible Pipeline Toggles
+  const [runVehicle, setRunVehicle] = useState(true);
+  const [runPlate, setRunPlate] = useState(true);
+  const [runOcr, setRunOcr] = useState(true);
+  const [runClassifier, setRunClassifier] = useState(true);
   
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -252,6 +259,9 @@ function App() {
     setBestResult(null);
     setError(null);
     stopCamera();
+    if (tab === 'pipeline_sandbox') {
+      setUseCamera(false);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -296,6 +306,13 @@ function App() {
     else if (activeTab === 'plate_detect') endpoint = "/api/v1/test/plate-detect";
     else if (activeTab === 'plate_ocr') endpoint = "/api/v1/test/plate-ocr";
     else if (activeTab === 'plate_classify') endpoint = "/api/v1/test/plate-classify";
+    else if (activeTab === 'pipeline_sandbox') {
+      endpoint = "/api/v1/test/flexible-pipeline";
+      formData.append("run_vehicle", runVehicle.toString());
+      formData.append("run_plate", runPlate.toString());
+      formData.append("run_ocr", runOcr.toString());
+      formData.append("run_classifier", runClassifier.toString());
+    }
 
     try {
       const response = await fetch(`${BACKEND_URL}${endpoint}`, {
@@ -390,6 +407,15 @@ function App() {
           <span>Plate Type Classifier</span>
           <code className="tab-model">plate_classifier.onnx</code>
         </button>
+
+        <button 
+          className={`tab-btn ${activeTab === 'pipeline_sandbox' ? 'active' : ''}`}
+          onClick={() => handleTabChange('pipeline_sandbox')}
+        >
+          <Sliders className="tab-icon" />
+          <span>Flexible Pipeline</span>
+          <code className="tab-model">toggle steps</code>
+        </button>
       </nav>
 
       {/* Main Workspace Layout */}
@@ -403,32 +429,34 @@ function App() {
           </div>
 
           {/* Toggle File Upload / Live Camera Stream */}
-          <div className="panel-mode-selector">
-            <button 
-              className={`mode-btn ${!useCamera ? 'active' : ''}`}
-              onClick={() => {
-                stopCamera();
-                setUseCamera(false);
-              }}
-              disabled={streaming}
-            >
-              Upload Image File
-            </button>
-            <button 
-              className={`mode-btn ${useCamera ? 'active' : ''}`}
-              onClick={() => {
-                setSelectedFile(null);
-                setPreviewUrl(null);
-                setResult(null);
-                setBestResult(null);
-                setUseCamera(true);
-                enumerateCameras();
-              }}
-              disabled={streaming}
-            >
-              Live Camera Stream
-            </button>
-          </div>
+          {activeTab !== 'pipeline_sandbox' && (
+            <div className="panel-mode-selector">
+              <button 
+                className={`mode-btn ${!useCamera ? 'active' : ''}`}
+                onClick={() => {
+                  stopCamera();
+                  setUseCamera(false);
+                }}
+                disabled={streaming}
+              >
+                Upload Image File
+              </button>
+              <button 
+                className={`mode-btn ${useCamera ? 'active' : ''}`}
+                onClick={() => {
+                  setSelectedFile(null);
+                  setPreviewUrl(null);
+                  setResult(null);
+                  setBestResult(null);
+                  setUseCamera(true);
+                  enumerateCameras();
+                }}
+                disabled={streaming}
+              >
+                Live Camera Stream
+              </button>
+            </div>
+          )}
 
           <div className="upload-container">
             {!useCamera ? (
@@ -574,23 +602,80 @@ function App() {
           </div>
 
           {!useCamera && (
-            <button
-              className="btn btn-primary btn-run"
-              disabled={!selectedFile || loading}
-              onClick={handleRunInference}
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="animate-spin mr-2" />
-                  Executing Model...
-                </>
-              ) : (
-                <>
-                  <Play className="mr-2" />
-                  Run ONNX Model
-                </>
+            <>
+              {activeTab === 'pipeline_sandbox' && (
+                <div className="pipeline-toggles-container">
+                  <h3>Enable/Disable Pipeline Steps</h3>
+                  <div className="toggles-grid">
+                    <label className="toggle-item">
+                      <input 
+                        type="checkbox" 
+                        checked={runVehicle} 
+                        onChange={(e) => setRunVehicle(e.target.checked)} 
+                      />
+                      <span className="toggle-label">
+                        <span className="step-num">Step 1:</span>
+                        <span>Vehicle Detector</span>
+                      </span>
+                    </label>
+
+                    <label className="toggle-item">
+                      <input 
+                        type="checkbox" 
+                        checked={runPlate} 
+                        onChange={(e) => setRunPlate(e.target.checked)} 
+                      />
+                      <span className="toggle-label">
+                        <span className="step-num">Step 2:</span>
+                        <span>Plate Detector</span>
+                      </span>
+                    </label>
+
+                    <label className="toggle-item">
+                      <input 
+                        type="checkbox" 
+                        checked={runOcr} 
+                        onChange={(e) => setRunOcr(e.target.checked)} 
+                      />
+                      <span className="toggle-label">
+                        <span className="step-num">Step 3:</span>
+                        <span>Plate OCR (Chars)</span>
+                      </span>
+                    </label>
+
+                    <label className="toggle-item">
+                      <input 
+                        type="checkbox" 
+                        checked={runClassifier} 
+                        onChange={(e) => setRunClassifier(e.target.checked)} 
+                      />
+                      <span className="toggle-label">
+                        <span className="step-num">Step 4:</span>
+                        <span>Plate Style Classifier</span>
+                      </span>
+                    </label>
+                  </div>
+                </div>
               )}
-            </button>
+
+              <button
+                className="btn btn-primary btn-run"
+                disabled={!selectedFile || loading}
+                onClick={handleRunInference}
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="animate-spin mr-2" />
+                    Executing Model...
+                  </>
+                ) : (
+                  <>
+                    <Play className="mr-2" />
+                    Run ONNX Model
+                  </>
+                )}
+              </button>
+            </>
           )}
         </section>
 
@@ -657,8 +742,8 @@ function App() {
 
               {/* Specific Metadata Panel based on activeTab */}
               
-              {/* Tabs 1 & 2: Detections List */}
-              {(activeTab === 'vehicle_detect' || activeTab === 'plate_detect') && displayResult.detections && (
+              {/* Tabs 1 & 2 & Sandbox (if detections present): Detections List */}
+              {(activeTab === 'vehicle_detect' || activeTab === 'plate_detect' || (activeTab === 'pipeline_sandbox' && displayResult.detections && displayResult.detections.length > 0)) && displayResult.detections && (
                 <div className="output-section">
                   <h3>Bounding Box Detections ({displayResult.detections.length})</h3>
                   {displayResult.detections.length > 0 ? (
@@ -690,8 +775,8 @@ function App() {
                 </div>
               )}
 
-              {/* Tab 3: OCR Characters & Text Sequences */}
-              {activeTab === 'plate_ocr' && (
+              {/* Tab 3 & Sandbox (if OCR returned): OCR Characters & Text Sequences */}
+              {(activeTab === 'plate_ocr' || (activeTab === 'pipeline_sandbox' && (displayResult.text_en || displayResult.text_lao))) && (
                 <div className="output-section">
                   <h3>OCR Text Reconstruction</h3>
                   
@@ -707,10 +792,10 @@ function App() {
                     </div>
                   </div>
 
-                  <h3>Character Detections ({displayResult.detections?.length || 0})</h3>
-                  {displayResult.detections && displayResult.detections.length > 0 ? (
+                  <h3>Character Detections ({displayResult.detections?.filter(d => d.char).length || 0})</h3>
+                  {displayResult.detections && displayResult.detections.filter(d => d.char).length > 0 ? (
                     <div className="char-list">
-                      {displayResult.detections.map((det, idx) => (
+                      {displayResult.detections.filter(d => d.char).map((det, idx) => (
                         <span key={idx} className="char-badge" title={`Confidence: ${(det.confidence * 100).toFixed(1)}%`}>
                           <strong>{det.char}</strong>
                           <small>{(det.confidence * 100).toFixed(0)}%</small>
@@ -723,8 +808,8 @@ function App() {
                 </div>
               )}
 
-              {/* Tab 4: Classifier Results & Badge */}
-              {activeTab === 'plate_classify' && (
+              {/* Tab 4 & Sandbox (if classification returned): Classifier Results & Badge */}
+              {(activeTab === 'plate_classify' || (activeTab === 'pipeline_sandbox' && displayResult.predicted_style)) && (
                 <div className="output-section text-center flex-center">
                   <h3>Style Classification</h3>
                   

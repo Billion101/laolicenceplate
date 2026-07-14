@@ -3,7 +3,7 @@ import os
 import cv2
 import numpy as np
 import base64
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from ultralytics import YOLO
 
@@ -243,3 +243,209 @@ async def test_plate_classify(file: UploadFile = File(...)):
         "bg_color": bg_color_mapping.get(predicted_style, "Unknown"),
         "font_color": font_color_mapping.get(predicted_style, "Unknown")
     }
+
+@app.post("/api/v1/test/flexible-pipeline", summary="Test the cascade pipeline with flexible model choices")
+async def test_flexible_pipeline(
+    file: UploadFile = File(...),
+    run_vehicle: bool = Form(True),
+    run_plate: bool = Form(True),
+    run_ocr: bool = Form(True),
+    run_classifier: bool = Form(True)
+):
+    contents = await file.read()
+    img = decode_upload_image(contents)
+    if img is None:
+        return {"success": False, "error": "Invalid image file"}
+
+    h, w = img.shape[:2]
+    annotated_img = img.copy()
+    detections = []
+    
+    ocr_en = ""
+    ocr_lao = ""
+    
+    predicted_style = ""
+    classifier_conf = 0.0
+    style_label = ""
+    bg_color = ""
+    font_color = ""
+
+    def crop_box(image, box):
+        x1, y1, x2, y2 = [max(0, int(c)) for c in box]
+        ih, iw = image.shape[:2]
+        x2, y2 = min(iw, x2), min(ih, y2)
+        return image[y1:y2, x1:x2]
+
+    # CASE A: Run Vehicle Detection first
+    if run_vehicle:
+        vehicle_results = vehicle_model(img, verbose=False)[0]
+        for b in vehicle_results.boxes:
+            v_xyxy = b.xyxy[0].tolist()
+            v_conf = float(b.conf[0])
+            cv2.rectangle(annotated_img, (int(v_xyxy[0]), int(v_xyxy[1])), (int(v_xyxy[2]), int(v_xyxy[3])), (0, 255, 0), 2)
+            cv2.putText(annotated_img, f"Vehicle {v_conf:.2f}", (int(v_xyxy[0]), int(v_xyxy[1]) - 5), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            
+            detections.append({
+                "box": [round(x, 1) for x in v_xyxy],
+                "confidence": round(v_conf, 4),
+                "class_name": "Vehicle"
+            })
+
+            if run_plate:
+                v_crop = crop_box(img, v_xyxy)
+                if v_crop.size > 0:
+                    plate_results = plate_model(v_crop, verbose=False)[0]
+                    for pb in plate_results.boxes:
+                        p_xyxy = pb.xyxy[0].tolist()
+                        p_conf = float(pb.conf[0])
+                        abs_p_box = [
+                            v_xyxy[0] + p_xyxy[0],
+                            v_xyxy[1] + p_xyxy[1],
+                            v_xyxy[0] + p_xyxy[2],
+                            v_xyxy[1] + p_xyxy[3]
+                        ]
+                        cv2.rectangle(annotated_img, (int(abs_p_box[0]), int(abs_p_box[1])), (int(abs_p_box[2]), int(abs_p_box[3])), (255, 0, 0), 2)
+                        cv2.putText(annotated_img, f"Plate {p_conf:.2f}", (int(abs_p_box[0]), int(abs_p_box[1]) - 5),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+                        
+                        detections.append({
+                            "box": [round(x, 1) for x in abs_p_box],
+                            "confidence": round(p_conf, 4),
+                            "class_name": "Plate"
+                        })
+
+                        p_crop = crop_box(v_crop, p_xyxy)
+                        if p_crop.size > 0:
+                            if run_ocr:
+                                text_results = text_model(p_crop, verbose=False)[0]
+                                if text_results.boxes:
+                                    t_en, t_lao, _ = reconstruct_plate_text(text_results.boxes, text_model.names)
+                                    ocr_en = t_en
+                                    ocr_lao = t_lao
+                                    for tb in text_results.boxes:
+                                        tb_xyxy = tb.xyxy[0].tolist()
+                                        abs_tb_box = [
+                                            abs_p_box[0] + tb_xyxy[0],
+                                            abs_p_box[1] + tb_xyxy[1],
+                                            abs_p_box[0] + tb_xyxy[2],
+                                            abs_p_box[1] + tb_xyxy[3]
+                                        ]
+                                        cv2.rectangle(annotated_img, (int(abs_tb_box[0]), int(abs_tb_box[1])), (int(abs_tb_box[2]), int(abs_tb_box[3])), (0, 255, 255), 1)
+                            if run_classifier:
+                                class_results = classifier_model(p_crop, verbose=False)[0]
+                                top1_id = class_results.probs.top1
+                                classifier_conf = float(class_results.probs.top1conf)
+                                predicted_style = class_results.names[top1_id]
+                                
+    # CASE B: No Vehicle Detection, but Plate Detection is on
+    elif run_plate:
+        plate_results = plate_model(img, verbose=False)[0]
+        for pb in plate_results.boxes:
+            p_xyxy = pb.xyxy[0].tolist()
+            p_conf = float(pb.conf[0])
+            cv2.rectangle(annotated_img, (int(p_xyxy[0]), int(p_xyxy[1])), (int(p_xyxy[2]), int(p_xyxy[3])), (255, 0, 0), 2)
+            cv2.putText(annotated_img, f"Plate {p_conf:.2f}", (int(p_xyxy[0]), int(p_xyxy[1]) - 5),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+            
+            detections.append({
+                "box": [round(x, 1) for x in p_xyxy],
+                "confidence": round(p_conf, 4),
+                "class_name": "Plate"
+            })
+
+            p_crop = crop_box(img, p_xyxy)
+            if p_crop.size > 0:
+                if run_ocr:
+                    text_results = text_model(p_crop, verbose=False)[0]
+                    if text_results.boxes:
+                        t_en, t_lao, _ = reconstruct_plate_text(text_results.boxes, text_model.names)
+                        ocr_en = t_en
+                        ocr_lao = t_lao
+                        for tb in text_results.boxes:
+                            tb_xyxy = tb.xyxy[0].tolist()
+                            abs_tb_box = [
+                                p_xyxy[0] + tb_xyxy[0],
+                                p_xyxy[1] + tb_xyxy[1],
+                                p_xyxy[0] + tb_xyxy[2],
+                                p_xyxy[1] + tb_xyxy[3]
+                            ]
+                            cv2.rectangle(annotated_img, (int(abs_tb_box[0]), int(abs_tb_box[1])), (int(abs_tb_box[2]), int(abs_tb_box[3])), (0, 255, 255), 1)
+                if run_classifier:
+                    class_results = classifier_model(p_crop, verbose=False)[0]
+                    top1_id = class_results.probs.top1
+                    classifier_conf = float(class_results.probs.top1conf)
+                    predicted_style = class_results.names[top1_id]
+                    classifier_conf = float(class_results.probs.top1conf)
+                    predicted_style = class_results.names[top1_id]
+
+    # CASE C: Neither Vehicle nor Plate detection, but OCR is on
+    elif run_ocr:
+        text_results = text_model(img, verbose=False)[0]
+        if text_results.boxes:
+            t_en, t_lao, _ = reconstruct_plate_text(text_results.boxes, text_model.names)
+            ocr_en = t_en
+            ocr_lao = t_lao
+            for tb in text_results.boxes:
+                tb_xyxy = tb.xyxy[0].tolist()
+                cv2.rectangle(annotated_img, (int(tb_xyxy[0]), int(tb_xyxy[1])), (int(tb_xyxy[2]), int(tb_xyxy[3])), (0, 255, 255), 1)
+                
+                detections.append({
+                    "box": [round(x, 1) for x in tb_xyxy],
+                    "confidence": round(float(tb.conf[0]), 4),
+                    "char": text_model.names[int(tb.cls[0])]
+                })
+
+        if run_classifier:
+            class_results = classifier_model(img, verbose=False)[0]
+            top1_id = class_results.probs.top1
+            classifier_conf = float(class_results.probs.top1conf)
+            predicted_style = class_results.names[top1_id]
+
+    # CASE D: Only Classifier is enabled
+    elif run_classifier:
+        class_results = classifier_model(img, verbose=False)[0]
+        top1_id = class_results.probs.top1
+        classifier_conf = float(class_results.probs.top1conf)
+        predicted_style = class_results.names[top1_id]
+
+    if predicted_style:
+        class_mapping = {
+            'private': 'Private License Plate (Yellow bg, Black text)',
+            'government': 'Government License Plate (Blue bg, White text)',
+            'state': 'Government License Plate (Blue bg, White text)',
+            'business_100': 'Business License Plate 100% (White bg, Black text)',
+            'business_1': 'Business License Plate 1% (White bg, Blue text)',
+            'military_police': 'Military/Police License Plate (Red bg, White text)',
+            'public': 'Military/Police License Plate (Red bg, White text)',
+            'foreign': 'Foreign License Plate (Yellow bg, Blue text)',
+            'international_organization': 'International Organization Plate (White bg, Blue text)'
+        }
+        bg_color_mapping = {
+            'private': 'Yellow', 'government': 'Blue', 'state': 'Blue', 'military_police': 'Red', 'public': 'Red',
+            'business_100': 'White', 'business_1': 'White', 'foreign': 'Yellow',
+            'international_organization': 'White'
+        }
+        font_color_mapping = {
+            'private': 'Black', 'government': 'White', 'state': 'White', 'military_police': 'White', 'public': 'White',
+            'business_100': 'Black', 'business_1': 'Blue', 'foreign': 'Blue',
+            'international_organization': 'Blue'
+        }
+        style_label = class_mapping.get(predicted_style, "Unknown License Plate Type")
+        bg_color = bg_color_mapping.get(predicted_style, "Unknown")
+        font_color = font_color_mapping.get(predicted_style, "Unknown")
+
+    base64_image = encode_image_base64(annotated_img)
+    return {
+        "success": True,
+        "annotated_image": f"data:image/jpeg;base64,{base64_image}",
+        "detections": detections,
+        "text_en": ocr_en,
+        "text_lao": ocr_lao,
+        "predicted_style": predicted_style,
+        "confidence": round(classifier_conf, 4) if predicted_style else None,
+        "label": style_label if predicted_style else None,
+        "bg_color": bg_color if predicted_style else None,
+        "font_color": font_color if predicted_style else None
+    }
+

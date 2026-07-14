@@ -5,3 +5,5 @@ opencv-python
 numpy
 onnxruntime
 python-multipart
+onnx
+

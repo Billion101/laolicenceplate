@@ -1,5 +1,5 @@
 import React from "react";
-import { Film, Image as ImageIcon, Database, Camera } from "lucide-react";
+import { Film, Image as ImageIcon, Database, Sliders } from "lucide-react";
 
 interface NavbarProps {
   activeTab: string;
@@ -8,9 +8,9 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
   const menuItems = [
-    { id: "live", label: "Live Camera", icon: Camera },
     { id: "video", label: "Process Video", icon: Film },
     { id: "image", label: "Scan Image", icon: ImageIcon },
+    { id: "sandbox", label: "Model Sandbox", icon: Sliders },
     { id: "logs", label: "Plate Database", icon: Database },
   ];
 

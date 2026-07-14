@@ -155,7 +155,9 @@ class LicensePlatePipeline:
             text_en, text_lao, chars = ocr_utils.reconstruct_plate_text(text_boxes, self.text_model.names)
 
             # --- Stage 4: AI Plate Type Classification ---
-            auto_cropped_rotated = ocr_utils.auto_crop_plate_by_chars(rotated, text_boxes)
+            # Use the full deskewed plate image (which now has your 20px padding)
+            # directly for classification, instead of aggressively cropping around the text.
+            auto_cropped_rotated = rotated
             class_results = self.classifier_model(auto_cropped_rotated, conf=0.25, verbose=False)[0]
             class_id = class_results.probs.top1
             predicted_style = class_results.names[class_id]

@@ -166,7 +166,7 @@ Make sure you have the following installed on your machine:
 Before running the AI pipeline or backend, you must download the 4 trained ONNX models and place them inside the **`AI/models/`** directory.
 
 > [!IMPORTANT]
-> 📥 **Model Download Link:** [Download models.zip]() *(Link will be provided here)*
+> 📥 **Model Download Link:** [Download models.zip (Google Drive)](https://drive.google.com/file/d/1L2XQPgSc1nFCwb7LguVn9-rI2oy9o2z2/view?usp=sharing)
 
 Once downloaded, extract the archive or place the 4 `.onnx` files into the `AI/models/` folder as follows:
 

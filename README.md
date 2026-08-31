@@ -19,6 +19,7 @@ An end-to-end, high-performance Intelligent Transportation System (ITS) tailored
 - [4. Core Application Features](#4-core-application-features)
 - [5. Quick Start & Setup Guide](#5-quick-start--setup-guide)
   - [Prerequisites](#prerequisites)
+  - [Step 0: Download AI Model Weights](#step-0-download-ai-model-weights)
   - [Step 1: Start MongoDB](#step-1-start-mongodb)
   - [Step 2: AI Engine Setup](#step-2-ai-engine-setup)
   - [Step 3: Backend Server (FastAPI)](#step-3-backend-server-fastapi)
@@ -157,6 +158,25 @@ Make sure you have the following installed on your machine:
 - **Node.js 18+** & **npm**
 - **MongoDB Community Server** (Running on default port `27017`)
 - *(Optional)* Windows DirectX 12 compatible GPU or NVIDIA GPU with CUDA for acceleration
+
+---
+
+### Step 0: Download AI Model Weights
+
+Before running the AI pipeline or backend, you must download the 4 trained ONNX models and place them inside the **`AI/models/`** directory.
+
+> [!IMPORTANT]
+> 📥 **Model Download Link:** [Download models.zip]() *(Link will be provided here)*
+
+Once downloaded, extract the archive or place the 4 `.onnx` files into the `AI/models/` folder as follows:
+
+```text
+AI/models/
+├── vehicle_detect.onnx       # Stage 1: Vehicle Detector
+├── vehicle_plate.onnx        # Stage 2: Plate Detector
+├── plate_text.onnx           # Stage 3: Character OCR Model
+└── plate_classifier.onnx     # Stage 4: Plate Style Classifier
+```
 
 ---
 

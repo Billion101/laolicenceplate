@@ -15,6 +15,7 @@ ENV/
 # Model Weight Files
 *.pt
 *.onnx
+*.zip
 
 # Local Runtime Output Logs & YOLO/OCR Results
 **/runs/

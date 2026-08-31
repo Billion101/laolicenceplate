@@ -47,14 +47,15 @@ The backend is built using **FastAPI**, a modern, high-performance web framework
         ```json
         {
           "_id": "ObjectId",
-          "plate_text": "ກກ 1234",
-          "plate_type": "Private License Plate",
-          "confidence": 0.89,
+          "timestamp": 1781883845.123,
+          "ocr_en": "VTE | A R 0 0 9 3",
+          "ocr_lao": "ນະຄອນຫຼວງວຽງຈັນ (Vientiane) | ກ ພ 0 0 9 3",
           "bg_color": "Yellow",
           "font_color": "Black",
+          "plate_type": "Private License Plate (Yellow bg, Black text)",
+          "confidence": 0.88,
           "image_url": "/static/plates/uuid.jpg",
-          "vehicle_image_url": "/static/vehicles/uuid.jpg",
-          "timestamp": "ISODate"
+          "vehicle_image_url": "/static/vehicles/uuid.jpg"
         }
         ```
 
@@ -62,12 +63,23 @@ The backend is built using **FastAPI**, a modern, high-performance web framework
 
 ## 2. API Endpoints
 
-The endpoints are exposed by the scan router: [scan.py](file:///c:/Users/billi/Desktop/laolicenceplate/backend/app/routers/scan.py):
+All endpoints are prefixed with `/api/v1/scan` inside [scan.py](file:///c:/Users/billi/Desktop/laolicenceplate/backend/app/routers/scan.py):
 
-*   `POST /scan/image`
-    *   **Description:** Accepts a multipart form image upload. It runs the AI pipeline, crops the plate and vehicle, saves them locally, records a document in MongoDB, and returns the detection results.
-*   `GET /scan/logs`
-    *   **Description:** Queries MongoDB for previous scans, sorted by the most recent timestamp.
+*   `POST /image`
+    *   **Description:** Accepts an uploaded image file, runs full AI inference, logs metadata and relative image URLs to MongoDB, and returns details along with a base64 annotated image.
+*   `POST /video/upload`
+    *   **Description:** Temporarily uploads and saves a video file (`.mp4`, `.avi`, `.mov`) in the backend storage.
+*   `GET /video/stream`
+    *   **Description:** Processes the uploaded video frame-by-frame, performs tracking/logging, and returns an MJPEG live annotated stream to the client.
+*   `GET /logs`
+    *   **Description:** Queries MongoDB for the latest scan records, sorted by timestamp.
+*   `DELETE /delete/{log_id}`
+    *   **Description:** Purges a specific scan log from MongoDB and deletes its associated JPG crops from disk.
+*   `DELETE /clear-all`
+    *   **Description:** Empties the logs collection in MongoDB and deletes all static plate and vehicle images from disk.
+*   `POST /flexible-pipeline`
+    *   **Description:** Stateless sandbox inference endpoint. Accepts toggles for individual pipeline stages (Vehicle Detect, Plate Detect, OCR, Classifier) and performs inference without writing logs or images.
+
 
 ---
 

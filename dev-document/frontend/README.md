@@ -14,38 +14,42 @@ The client-side interface is built as a single-page application (SPA) using **Re
                   │   (Coordinates Active Tab)    │
                   └──────────────┬────────────────┘
                                  │
-         ┌───────────────────────┼───────────────────────┐
-         ▼                       ▼                       ▼
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  ImageScanner   │     │  VideoScanner   │     │  PlateDatabase  │
-│ (Uploads & scan)│     │ (Real-time cam) │     │ (History grid)  │
-└────────┬────────┘     └────────┬────────┘     └────────┬────────┘
-         │                       │                       │
-         └───────────────────────┼───────────────────────┘
-                                 ▼
-                     ┌───────────────────────┐
-                     │    services/api.ts    │ (Axios calls backend)
-                     └───────────┬───────────┘
-                                 │ HTTP requests
-                                 ▼
-                         [FastAPI Backend]
+     ┌───────────────────┬───────┴───────┬───────────────────┐
+     ▼                   ▼               ▼                   ▼
+┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐
+│ ImageScanner  │ │ VideoScanner  │ │ ModelSandbox  │ │ PlateDatabase │
+│ (Uploads/scan)│ │ (Upload/mjpeg)│ │ (Toggles/scan)│ │ (History logs)│
+└───────┬───────┘ └───────┬───────┘ └───────┬───────┘ └───────┬───────┘
+        │                 │                 │                 │
+        └─────────────────┴────────┬────────┴─────────────────┘
+                                   ▼
+                       ┌───────────────────────┐
+                       │    services/api.ts    │ (Axios calls backend)
+                       └───────────┬───────────┘
+                                   │ HTTP requests
+                                   ▼
+                           [FastAPI Backend]
 ```
 
 ### Key Subsystems & Core Views:
 
 1.  **Service Client (`api.ts`):**
-    *   Located in [api.ts](file:///c:/Users/billi/Desktop/laolicenceplate/frontend/src/services/api.ts). It exports functions `scanImage(file)` and `getScanLogs()` to communicate with the backend.
+    *   Located in [api.ts](file:///c:/Users/billi/Desktop/laolicenceplate/frontend/src/services/api.ts). It exports functions like `scanImage(file)`, `uploadVideo(file)`, `getLogs(limit)`, and sandbox requests to communicate with the backend.
     *   Dynamically maps the server URL and processes backend URLs (prefixes static images with the backend origin).
 2.  **Image Scanner View (`ImageScanner.tsx`):**
-    *   Provides drag-and-drop or select file inputs.
-    *   Displays side-by-side crop cards showing both the **Vehicle Crop** (context) and the **Plate Crop** (text zoom) once the backend responds, accompanied by full confidence, background/font color badges, and character metrics.
+    *   Provides drag-and-drop or file selector inputs for static scans.
+    *   Displays side-by-side crop cards showing both the **Vehicle Crop** (context) and the **Plate Crop** (text zoom) once the backend responds, accompanied by confidence, background/font color badges, and character metrics.
 3.  **Video Scanner View (`VideoScanner.tsx`):**
-    *   Integrates with standard webcams via `navigator.mediaDevices.getUserMedia`.
-    *   Runs a frame capture loop using an HTML5 Canvas, executing scans asynchronously at configured intervals.
-4.  **Plate Database History View (`PlateDatabase.tsx`):**
+    *   Allows uploading pre-recorded video files (`.mp4`, `.avi`, `.mov`).
+    *   Streams annotated processed frames back in real-time from the backend's `/video/stream` endpoint, while displaying active detection logs side-by-side.
+4.  **Model Sandbox View (`ModelSandbox.tsx`):**
+    *   Provides toggles for individual pipeline steps (Vehicle Detection, Plate Detection, OCR, Classifier).
+    *   Allows uploading files to run modular tests, displaying step-by-step bounding box coordinates and badges stateless-ly.
+5.  **Plate Database History View (`PlateDatabase.tsx`):**
     *   Queries history logs on mount.
-    *   Includes a search bar filtering by license plate letters or plate types in real-time.
+    *   Includes a search bar filtering by license plate letters or plate types in real-time, and deletion triggers to purge specific records.
     *   Renders card components with date timestamps, mapped Lao text translation, and side-by-side vehicle/plate images.
+
 
 ---
 
